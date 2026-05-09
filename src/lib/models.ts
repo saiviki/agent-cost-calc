@@ -180,6 +180,19 @@ export const MODELS: Model[] = [
     outputPricePerM: 1.95,
     supportsCache: false,
   },
+  {
+    id: "glm-5.1",
+    name: "GLM 5.1",
+    provider: "Z.ai",
+    isOpen: true,
+    tier: "mid",
+    strengths: ["coding", "reasoning", "general"],
+    contextK: 202,
+    inputPricePerM: 1.05,
+    outputPricePerM: 3.50,
+    cacheReadPricePerM: 0.525,
+    supportsCache: true,
+  },
   // ── BUDGET ──
   {
     id: "deepseek-v4-flash",
@@ -193,18 +206,6 @@ export const MODELS: Model[] = [
     outputPricePerM: 0.28,
     cacheReadPricePerM: 0.0028,
     supportsCache: true,
-  },
-  {
-    id: "llama-4-maverick",
-    name: "Llama 4 Maverick",
-    provider: "Meta",
-    isOpen: true,
-    tier: "budget",
-    strengths: ["long-context", "general"],
-    contextK: 1048,
-    inputPricePerM: 0.15,
-    outputPricePerM: 0.60,
-    supportsCache: false,
   },
   {
     id: "llama-3.3-70b",
