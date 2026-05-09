@@ -4,7 +4,7 @@ Model the real cost of running an AI agent before you scale.
 
 Configure your agent's token profile, tool calls, caching strategy, and volume — get an instant cost breakdown across the top models.
 
-**Live:** [agent-cost-calc.vercel.app](https://agent-cost-calc.vercel.app) *(after deploy)*
+**Live:** [agent-cost-calc-saiviki.vercel.app](https://agent-cost-calc-saiviki.vercel.app)
 
 ## What it does
 
