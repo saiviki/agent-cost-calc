@@ -1,15 +1,20 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   MODELS,
+  TIER_LABEL,
+  STRENGTH_LABEL,
+  filterModels,
   calculateCost,
   formatCost,
   type AgentConfig,
+  type Tier,
+  type Strength,
 } from "@/lib/models";
 
 const DEFAULT_CONFIG: AgentConfig = {
-  modelId: "claude-sonnet-4-6",
+  modelId: "claude-sonnet-4-6", // most-used model on OpenRouter
   systemPromptTokens: 2000,
   inputTokensPerRun: 1500,
   outputTokensPerRun: 500,
@@ -18,6 +23,16 @@ const DEFAULT_CONFIG: AgentConfig = {
   cacheHitRate: 0.7,
   runsPerDay: 100,
 };
+
+const TIERS: Tier[] = ["frontier", "mid", "budget"];
+const STRENGTHS: Strength[] = [
+  "coding",
+  "reasoning",
+  "multimodal",
+  "long-context",
+  "fast",
+  "general",
+];
 
 function Slider({
   label,
@@ -60,6 +75,30 @@ function Slider({
   );
 }
 
+function Chip<T extends string>({
+  label,
+  active,
+  onToggle,
+}: {
+  label: string;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+        active
+          ? "bg-stone-800 text-white border-stone-800"
+          : "bg-white text-stone-500 border-stone-200 hover:border-stone-400 hover:text-stone-700"
+      }`}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
 function CostBar({
   label,
   value,
@@ -90,26 +129,53 @@ function CostBar({
   );
 }
 
+function toggleSet<T>(set: Set<T>, value: T): Set<T> {
+  const next = new Set(set);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
+}
+
 export default function Home() {
   const [config, setConfig] = useState<AgentConfig>(DEFAULT_CONFIG);
+  const [tierFilter, setTierFilter] = useState<Set<Tier>>(new Set());
+  const [typeFilter, setTypeFilter] = useState<Set<"closed" | "open">>(new Set());
+  const [strengthFilter, setStrengthFilter] = useState<Set<Strength>>(new Set());
 
   const set = <K extends keyof AgentConfig>(key: K, value: AgentConfig[K]) =>
     setConfig((c) => ({ ...c, [key]: value }));
 
-  const breakdown = useMemo(() => calculateCost(config), [config]);
+  const filteredModels = useMemo(
+    () => filterModels(MODELS, tierFilter, typeFilter, strengthFilter),
+    [tierFilter, typeFilter, strengthFilter]
+  );
 
-  const selectedModel = MODELS.find((m) => m.id === config.modelId)!;
+  // If the currently selected model is filtered out, fall back to first match
+  useEffect(() => {
+    if (filteredModels.length === 0) return;
+    if (!filteredModels.some((m) => m.id === config.modelId)) {
+      set("modelId", filteredModels[0].id);
+    }
+  }, [filteredModels, config.modelId]);
+
+  const selectedModel =
+    MODELS.find((m) => m.id === config.modelId) ?? MODELS[0];
+  const breakdown = useMemo(() => calculateCost(config), [config]);
 
   const allBreakdowns = useMemo(
     () =>
-      MODELS.map((m) => ({
-        model: m,
-        cost: calculateCost({ ...config, modelId: m.id }),
-      })).sort((a, b) => a.cost.totalPerRun - b.cost.totalPerRun),
-    [config]
+      filteredModels
+        .map((m) => ({
+          model: m,
+          cost: calculateCost({ ...config, modelId: m.id }),
+        }))
+        .sort((a, b) => a.cost.totalPerRun - b.cost.totalPerRun),
+    [config, filteredModels]
   );
 
-  const maxCost = Math.max(...allBreakdowns.map((b) => b.cost.totalPerRun));
+  const maxCost = Math.max(...allBreakdowns.map((b) => b.cost.totalPerRun), 0);
+  const activeFilterCount =
+    tierFilter.size + typeFilter.size + strengthFilter.size;
 
   return (
     <main className="min-h-screen bg-stone-50 px-4 py-12">
@@ -128,36 +194,124 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           {/* Config Panel */}
           <div className="lg:col-span-3 space-y-8">
-            {/* Model selector */}
+            {/* Model selector + filters */}
             <section className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                Model
-              </h2>
-              <div className="grid grid-cols-2 gap-2">
-                {MODELS.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => set("modelId", m.id)}
-                    className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${
-                      config.modelId === m.id
-                        ? "border-stone-800 bg-stone-800 text-white"
-                        : "border-stone-200 bg-white text-stone-700 hover:border-stone-300"
-                    }`}
-                  >
-                    <div className="font-medium">{m.name}</div>
-                    <div
-                      className={`text-xs mt-0.5 ${
-                        config.modelId === m.id
-                          ? "text-stone-300"
-                          : "text-stone-400"
-                      }`}
-                    >
-                      {m.provider} · ${m.inputPricePerM}/${m.outputPricePerM}
-                      /M
-                    </div>
-                  </button>
-                ))}
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
+                  Model
+                </h2>
+                <span className="text-xs text-stone-400">
+                  {filteredModels.length} of {MODELS.length}
+                </span>
               </div>
+
+              {/* Filter rows */}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
+                    Tier
+                  </span>
+                  {TIERS.map((t) => (
+                    <Chip
+                      key={t}
+                      label={TIER_LABEL[t]}
+                      active={tierFilter.has(t)}
+                      onToggle={() =>
+                        setTierFilter(toggleSet(tierFilter, t))
+                      }
+                    />
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
+                    Type
+                  </span>
+                  {(["closed", "open"] as const).map((t) => (
+                    <Chip
+                      key={t}
+                      label={t === "closed" ? "Closed" : "Open-weights"}
+                      active={typeFilter.has(t)}
+                      onToggle={() =>
+                        setTypeFilter(toggleSet(typeFilter, t))
+                      }
+                    />
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
+                    Strength
+                  </span>
+                  {STRENGTHS.map((s) => (
+                    <Chip
+                      key={s}
+                      label={STRENGTH_LABEL[s]}
+                      active={strengthFilter.has(s)}
+                      onToggle={() =>
+                        setStrengthFilter(toggleSet(strengthFilter, s))
+                      }
+                    />
+                  ))}
+                </div>
+                {activeFilterCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTierFilter(new Set());
+                      setTypeFilter(new Set());
+                      setStrengthFilter(new Set());
+                    }}
+                    className="text-xs text-stone-400 hover:text-stone-700 underline underline-offset-2"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+
+              {/* Filtered grid */}
+              {filteredModels.length === 0 ? (
+                <div className="text-sm text-stone-400 italic py-4 text-center border border-dashed border-stone-200 rounded-lg">
+                  No models match these filters.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {filteredModels.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => set("modelId", m.id)}
+                      className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${
+                        config.modelId === m.id
+                          ? "border-stone-800 bg-stone-800 text-white"
+                          : "border-stone-200 bg-white text-stone-700 hover:border-stone-300"
+                      }`}
+                      type="button"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium">{m.name}</span>
+                        {m.isOpen && (
+                          <span
+                            className={`text-[9px] uppercase tracking-wider px-1 py-0.5 rounded ${
+                              config.modelId === m.id
+                                ? "bg-stone-700 text-stone-300"
+                                : "bg-stone-100 text-stone-500"
+                            }`}
+                          >
+                            open
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className={`text-xs mt-0.5 ${
+                          config.modelId === m.id
+                            ? "text-stone-300"
+                            : "text-stone-400"
+                        }`}
+                      >
+                        {m.provider} · ${m.inputPricePerM}/${m.outputPricePerM}/M
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </section>
 
             {/* Token inputs */}
@@ -334,41 +488,57 @@ export default function Home() {
 
             {/* Model comparison */}
             <div className="bg-white border border-stone-200 rounded-xl p-5 space-y-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                Model Comparison (same config)
-              </h2>
-              <div className="space-y-3">
-                {allBreakdowns.map(({ model, cost }) => (
-                  <div key={model.id} className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span
-                        className={
-                          model.id === config.modelId
-                            ? "font-semibold text-stone-900"
-                            : "text-stone-500"
-                        }
-                      >
-                        {model.name}
-                      </span>
-                      <span className="font-mono text-stone-700">
-                        {formatCost(cost.totalPerRun)}/run
-                      </span>
-                    </div>
-                    <div className="h-1 bg-stone-100 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          model.id === config.modelId
-                            ? "bg-stone-800"
-                            : "bg-stone-300"
-                        }`}
-                        style={{
-                          width: `${maxCost > 0 ? (cost.totalPerRun / maxCost) * 100 : 0}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
+                  Comparison
+                </h2>
+                <span className="text-[10px] text-stone-400">
+                  same config · cheapest first
+                </span>
               </div>
+              {allBreakdowns.length === 0 ? (
+                <p className="text-xs text-stone-400 italic">
+                  Adjust filters above to compare.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {allBreakdowns.map(({ model, cost }) => (
+                    <div key={model.id} className="space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span
+                          className={
+                            model.id === config.modelId
+                              ? "font-semibold text-stone-900"
+                              : "text-stone-500"
+                          }
+                        >
+                          {model.name}
+                          {model.isOpen && (
+                            <span className="ml-1 text-[9px] uppercase tracking-wider text-stone-400">
+                              open
+                            </span>
+                          )}
+                        </span>
+                        <span className="font-mono text-stone-700">
+                          {formatCost(cost.totalPerRun)}/run
+                        </span>
+                      </div>
+                      <div className="h-1 bg-stone-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            model.id === config.modelId
+                              ? "bg-stone-800"
+                              : "bg-stone-300"
+                          }`}
+                          style={{
+                            width: `${maxCost > 0 ? (cost.totalPerRun / maxCost) * 100 : 0}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -382,7 +552,7 @@ export default function Home() {
           >
             Sai Viki
           </a>{" "}
-          · Pricing sourced from provider docs · Not affiliated with any model provider
+          · Pricing via OpenRouter + provider docs · Lineup curated from real-usage rankings
         </div>
       </div>
     </main>

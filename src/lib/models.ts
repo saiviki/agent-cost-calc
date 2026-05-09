@@ -1,28 +1,47 @@
+export type Tier = "frontier" | "mid" | "budget";
+export type Strength =
+  | "coding"
+  | "reasoning"
+  | "multimodal"
+  | "long-context"
+  | "fast"
+  | "general";
+
 export type Model = {
   id: string;
   name: string;
   provider: string;
-  inputPricePerM: number;   // $ per 1M input tokens
-  outputPricePerM: number;  // $ per 1M output tokens
-  cacheReadPricePerM?: number;  // $ per 1M cached read tokens
-  cacheWritePricePerM?: number; // $ per 1M cache write tokens (5-min TTL)
+  isOpen: boolean;            // open-weights or open-API
+  tier: Tier;
+  strengths: Strength[];
+  contextK: number;            // context window in K tokens
+  inputPricePerM: number;
+  outputPricePerM: number;
+  cacheReadPricePerM?: number;
+  cacheWritePricePerM?: number;
   supportsCache: boolean;
 };
 
-// Pricing verified 2026-05-09 against:
-// - Anthropic: docs.claude.com/en/docs/about-claude/models/overview
-// - Google:    ai.google.dev/gemini-api/docs/pricing
-// - OpenAI:    helicone.ai/llm-cost (OpenAI page blocks scraping)
+// Pricing verified 2026-05-09 against OpenRouter's unified pricing API
+// (openrouter.ai/api/v1/models — ground-truth across 100+ providers)
+// + Anthropic docs.claude.com + Google ai.google.dev.
+//
+// Lineup is curated from OpenRouter's real-usage top-20 (production traffic)
+// + Artificial Analysis intelligence index, NOT just "newest."
 //
 // Anthropic prompt-caching: cache_read = 0.1 × input, cache_write_5min = 1.25 × input.
-// OpenAI cached input: GPT-5 family = 0.1 × input, GPT-4.1 = 0.25 × input, GPT-4o = 0.5 × input.
-// Gemini 2.5 Pro pricing shown is the ≤200k-token tier (>200k doubles).
+// OpenAI cached input: GPT-5.x family ≈ 0.1 × input.
+// Open-model cache pricing varies by host (figures here = OpenRouter median).
 export const MODELS: Model[] = [
-  // ── Anthropic ──
+  // ── FRONTIER ──
   {
     id: "claude-opus-4-7",
     name: "Claude Opus 4.7",
     provider: "Anthropic",
+    isOpen: false,
+    tier: "frontier",
+    strengths: ["coding", "reasoning"],
+    contextK: 1000,
     inputPricePerM: 5.0,
     outputPricePerM: 25.0,
     cacheReadPricePerM: 0.50,
@@ -33,6 +52,10 @@ export const MODELS: Model[] = [
     id: "claude-sonnet-4-6",
     name: "Claude Sonnet 4.6",
     provider: "Anthropic",
+    isOpen: false,
+    tier: "frontier",
+    strengths: ["coding", "general"],
+    contextK: 1000,
     inputPricePerM: 3.0,
     outputPricePerM: 15.0,
     cacheReadPricePerM: 0.30,
@@ -40,90 +63,211 @@ export const MODELS: Model[] = [
     supportsCache: true,
   },
   {
+    id: "gpt-5.5",
+    name: "GPT-5.5",
+    provider: "OpenAI",
+    isOpen: false,
+    tier: "frontier",
+    strengths: ["reasoning"],
+    contextK: 1050,
+    inputPricePerM: 5.0,
+    outputPricePerM: 30.0,
+    cacheReadPricePerM: 0.50,
+    supportsCache: true,
+  },
+  {
+    id: "gemini-3.1-pro",
+    name: "Gemini 3.1 Pro",
+    provider: "Google",
+    isOpen: false,
+    tier: "frontier",
+    strengths: ["multimodal", "long-context", "reasoning"],
+    contextK: 1048,
+    inputPricePerM: 2.0,
+    outputPricePerM: 12.0,
+    cacheReadPricePerM: 0.20,
+    supportsCache: true,
+  },
+  {
+    id: "deepseek-v4-pro",
+    name: "DeepSeek V4 Pro",
+    provider: "DeepSeek",
+    isOpen: true,
+    tier: "frontier",
+    strengths: ["reasoning", "coding"],
+    contextK: 1048,
+    inputPricePerM: 0.435,
+    outputPricePerM: 0.870,
+    cacheReadPricePerM: 0.0036,
+    supportsCache: true,
+  },
+  {
+    id: "kimi-k2.6",
+    name: "Kimi K2.6",
+    provider: "Moonshot",
+    isOpen: true,
+    tier: "frontier",
+    strengths: ["reasoning", "long-context"],
+    contextK: 262,
+    inputPricePerM: 0.75,
+    outputPricePerM: 3.50,
+    cacheReadPricePerM: 0.15,
+    supportsCache: true,
+  },
+  // ── MID ──
+  {
     id: "claude-haiku-4-5",
     name: "Claude Haiku 4.5",
     provider: "Anthropic",
+    isOpen: false,
+    tier: "mid",
+    strengths: ["fast", "coding"],
+    contextK: 200,
     inputPricePerM: 1.0,
     outputPricePerM: 5.0,
     cacheReadPricePerM: 0.10,
     cacheWritePricePerM: 1.25,
     supportsCache: true,
   },
-  // ── OpenAI ──
   {
-    id: "gpt-5",
-    name: "GPT-5",
+    id: "gpt-5.4-mini",
+    name: "GPT-5.4 mini",
     provider: "OpenAI",
-    inputPricePerM: 1.25,
-    outputPricePerM: 10.0,
-    cacheReadPricePerM: 0.125,
+    isOpen: false,
+    tier: "mid",
+    strengths: ["fast", "general"],
+    contextK: 400,
+    inputPricePerM: 0.75,
+    outputPricePerM: 4.50,
+    cacheReadPricePerM: 0.075,
     supportsCache: true,
   },
   {
-    id: "gpt-5-mini",
-    name: "GPT-5 mini",
-    provider: "OpenAI",
-    inputPricePerM: 0.25,
-    outputPricePerM: 2.0,
-    cacheReadPricePerM: 0.025,
-    supportsCache: true,
-  },
-  {
-    id: "gpt-5-nano",
-    name: "GPT-5 nano",
-    provider: "OpenAI",
-    inputPricePerM: 0.05,
-    outputPricePerM: 0.40,
-    cacheReadPricePerM: 0.005,
-    supportsCache: true,
-  },
-  {
-    id: "gpt-4.1",
-    name: "GPT-4.1",
-    provider: "OpenAI",
-    inputPricePerM: 2.0,
-    outputPricePerM: 8.0,
-    cacheReadPricePerM: 0.50,
-    supportsCache: true,
-  },
-  // ── Google ──
-  {
-    id: "gemini-2.5-pro",
-    name: "Gemini 2.5 Pro",
+    id: "gemini-3-flash",
+    name: "Gemini 3 Flash",
     provider: "Google",
-    inputPricePerM: 1.25,
-    outputPricePerM: 10.0,
-    cacheReadPricePerM: 0.125,
+    isOpen: false,
+    tier: "mid",
+    strengths: ["multimodal", "fast", "long-context"],
+    contextK: 1048,
+    inputPricePerM: 0.50,
+    outputPricePerM: 3.0,
+    cacheReadPricePerM: 0.05,
     supportsCache: true,
   },
   {
-    id: "gemini-2.5-flash",
-    name: "Gemini 2.5 Flash",
-    provider: "Google",
-    inputPricePerM: 0.30,
-    outputPricePerM: 2.50,
-    cacheReadPricePerM: 0.03,
+    id: "grok-4.1-fast",
+    name: "Grok 4.1 Fast",
+    provider: "xAI",
+    isOpen: false,
+    tier: "mid",
+    strengths: ["long-context", "fast"],
+    contextK: 2000,
+    inputPricePerM: 0.20,
+    outputPricePerM: 0.50,
+    cacheReadPricePerM: 0.05,
     supportsCache: true,
   },
   {
-    id: "gemini-2.5-flash-lite",
-    name: "Gemini 2.5 Flash-Lite",
-    provider: "Google",
+    id: "qwen-3.6-plus",
+    name: "Qwen 3.6 Plus",
+    provider: "Alibaba",
+    isOpen: true,
+    tier: "mid",
+    strengths: ["coding", "general"],
+    contextK: 1000,
+    inputPricePerM: 0.325,
+    outputPricePerM: 1.95,
+    supportsCache: false,
+  },
+  // ── BUDGET ──
+  {
+    id: "deepseek-v4-flash",
+    name: "DeepSeek V4 Flash",
+    provider: "DeepSeek",
+    isOpen: true,
+    tier: "budget",
+    strengths: ["fast", "general"],
+    contextK: 1048,
+    inputPricePerM: 0.14,
+    outputPricePerM: 0.28,
+    cacheReadPricePerM: 0.0028,
+    supportsCache: true,
+  },
+  {
+    id: "llama-4-maverick",
+    name: "Llama 4 Maverick",
+    provider: "Meta",
+    isOpen: true,
+    tier: "budget",
+    strengths: ["long-context", "general"],
+    contextK: 1048,
+    inputPricePerM: 0.15,
+    outputPricePerM: 0.60,
+    supportsCache: false,
+  },
+  {
+    id: "llama-3.3-70b",
+    name: "Llama 3.3 70B",
+    provider: "Meta",
+    isOpen: true,
+    tier: "budget",
+    strengths: ["general"],
+    contextK: 131,
     inputPricePerM: 0.10,
-    outputPricePerM: 0.40,
-    cacheReadPricePerM: 0.01,
+    outputPricePerM: 0.32,
+    supportsCache: false,
+  },
+  {
+    id: "minimax-m2.7",
+    name: "MiniMax M2.7",
+    provider: "MiniMax",
+    isOpen: true,
+    tier: "budget",
+    strengths: ["general"],
+    contextK: 196,
+    inputPricePerM: 0.30,
+    outputPricePerM: 1.20,
+    supportsCache: false,
+  },
+  {
+    id: "mistral-large-2",
+    name: "Mistral Large 2",
+    provider: "Mistral",
+    isOpen: true,
+    tier: "budget",
+    strengths: ["general"],
+    contextK: 262,
+    inputPricePerM: 0.50,
+    outputPricePerM: 1.50,
+    cacheReadPricePerM: 0.05,
     supportsCache: true,
   },
 ];
 
+export const TIER_LABEL: Record<Tier, string> = {
+  frontier: "Frontier",
+  mid: "Mid",
+  budget: "Budget",
+};
+
+export const STRENGTH_LABEL: Record<Strength, string> = {
+  coding: "Coding",
+  reasoning: "Reasoning",
+  multimodal: "Multimodal",
+  "long-context": "Long context",
+  fast: "Fast",
+  general: "General",
+};
+
 export type AgentConfig = {
   modelId: string;
-  systemPromptTokens: number;   // large context, usually cached
-  inputTokensPerRun: number;    // user input + retrieved context
+  systemPromptTokens: number;
+  inputTokensPerRun: number;
   outputTokensPerRun: number;
-  toolCallsPerRun: number;      // each tool call = extra input/output round
-  tokensPerToolCall: number;    // avg tokens in tool call input+output
-  cacheHitRate: number;         // 0–1, fraction of input served from cache
+  toolCallsPerRun: number;
+  tokensPerToolCall: number;
+  cacheHitRate: number;
   runsPerDay: number;
 };
 
@@ -144,7 +288,6 @@ export function calculateCost(config: AgentConfig): CostBreakdown {
 
   const totalInput = config.systemPromptTokens + config.inputTokensPerRun;
 
-  // Cached vs uncached input
   const cachedTokens = model.supportsCache
     ? totalInput * config.cacheHitRate
     : 0;
@@ -161,7 +304,6 @@ export function calculateCost(config: AgentConfig): CostBreakdown {
   const outputCost =
     (config.outputTokensPerRun / 1_000_000) * model.outputPricePerM;
 
-  // Tool calls: each call sends + receives tokens
   const toolCallCost =
     (config.toolCallsPerRun * config.tokensPerToolCall) / 1_000_000 *
     ((model.inputPricePerM + model.outputPricePerM) / 2);
@@ -187,4 +329,24 @@ export function formatCost(value: number): string {
   if (value < 1) return `$${value.toFixed(4)}`;
   if (value < 10) return `$${value.toFixed(3)}`;
   return `$${value.toFixed(2)}`;
+}
+
+export function filterModels(
+  models: Model[],
+  tiers: Set<Tier>,
+  types: Set<"closed" | "open">,
+  strengths: Set<Strength>,
+): Model[] {
+  return models.filter((m) => {
+    if (tiers.size > 0 && !tiers.has(m.tier)) return false;
+    if (types.size > 0) {
+      const t = m.isOpen ? "open" : "closed";
+      if (!types.has(t)) return false;
+    }
+    if (strengths.size > 0) {
+      const hasAny = m.strengths.some((s) => strengths.has(s));
+      if (!hasAny) return false;
+    }
+    return true;
+  });
 }
