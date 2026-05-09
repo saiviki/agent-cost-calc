@@ -261,7 +261,7 @@ export default function Home() {
           {/* Results Panel */}
           <div className="lg:col-span-2 space-y-6">
             {/* Cost summary */}
-            <div className="bg-white border border-stone-200 rounded-xl p-5 space-y-4 sticky top-8">
+            <div className="bg-white border border-stone-200 rounded-xl p-5 space-y-4">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
                 Cost Estimate
               </h2>
@@ -328,7 +328,7 @@ export default function Home() {
               </div>
 
               <p className="text-xs text-stone-300 pt-1">
-                Prices are approximate and may lag provider updates.
+                Prices verified May 2026 — verify against provider docs before scaling.
               </p>
             </div>
 

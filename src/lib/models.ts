@@ -5,11 +5,30 @@ export type Model = {
   inputPricePerM: number;   // $ per 1M input tokens
   outputPricePerM: number;  // $ per 1M output tokens
   cacheReadPricePerM?: number;  // $ per 1M cached read tokens
-  cacheWritePricePerM?: number; // $ per 1M cache write tokens
+  cacheWritePricePerM?: number; // $ per 1M cache write tokens (5-min TTL)
   supportsCache: boolean;
 };
 
+// Pricing verified 2026-05-09 against:
+// - Anthropic: docs.claude.com/en/docs/about-claude/models/overview
+// - Google:    ai.google.dev/gemini-api/docs/pricing
+// - OpenAI:    helicone.ai/llm-cost (OpenAI page blocks scraping)
+//
+// Anthropic prompt-caching: cache_read = 0.1 × input, cache_write_5min = 1.25 × input.
+// OpenAI cached input: GPT-5 family = 0.1 × input, GPT-4.1 = 0.25 × input, GPT-4o = 0.5 × input.
+// Gemini 2.5 Pro pricing shown is the ≤200k-token tier (>200k doubles).
 export const MODELS: Model[] = [
+  // ── Anthropic ──
+  {
+    id: "claude-opus-4-7",
+    name: "Claude Opus 4.7",
+    provider: "Anthropic",
+    inputPricePerM: 5.0,
+    outputPricePerM: 25.0,
+    cacheReadPricePerM: 0.50,
+    cacheWritePricePerM: 6.25,
+    supportsCache: true,
+  },
   {
     id: "claude-sonnet-4-6",
     name: "Claude Sonnet 4.6",
@@ -24,55 +43,76 @@ export const MODELS: Model[] = [
     id: "claude-haiku-4-5",
     name: "Claude Haiku 4.5",
     provider: "Anthropic",
-    inputPricePerM: 0.80,
-    outputPricePerM: 4.0,
-    cacheReadPricePerM: 0.08,
-    cacheWritePricePerM: 1.0,
+    inputPricePerM: 1.0,
+    outputPricePerM: 5.0,
+    cacheReadPricePerM: 0.10,
+    cacheWritePricePerM: 1.25,
     supportsCache: true,
   },
+  // ── OpenAI ──
   {
-    id: "claude-opus-4-6",
-    name: "Claude Opus 4.6",
-    provider: "Anthropic",
-    inputPricePerM: 15.0,
-    outputPricePerM: 75.0,
-    cacheReadPricePerM: 1.50,
-    cacheWritePricePerM: 18.75,
-    supportsCache: true,
-  },
-  {
-    id: "gpt-4o",
-    name: "GPT-4o",
+    id: "gpt-5",
+    name: "GPT-5",
     provider: "OpenAI",
-    inputPricePerM: 2.50,
+    inputPricePerM: 1.25,
     outputPricePerM: 10.0,
-    cacheReadPricePerM: 1.25,
+    cacheReadPricePerM: 0.125,
     supportsCache: true,
   },
   {
-    id: "gpt-4o-mini",
-    name: "GPT-4o mini",
+    id: "gpt-5-mini",
+    name: "GPT-5 mini",
     provider: "OpenAI",
-    inputPricePerM: 0.15,
-    outputPricePerM: 0.60,
-    cacheReadPricePerM: 0.075,
+    inputPricePerM: 0.25,
+    outputPricePerM: 2.0,
+    cacheReadPricePerM: 0.025,
     supportsCache: true,
   },
   {
-    id: "gemini-1.5-pro",
-    name: "Gemini 1.5 Pro",
+    id: "gpt-5-nano",
+    name: "GPT-5 nano",
+    provider: "OpenAI",
+    inputPricePerM: 0.05,
+    outputPricePerM: 0.40,
+    cacheReadPricePerM: 0.005,
+    supportsCache: true,
+  },
+  {
+    id: "gpt-4.1",
+    name: "GPT-4.1",
+    provider: "OpenAI",
+    inputPricePerM: 2.0,
+    outputPricePerM: 8.0,
+    cacheReadPricePerM: 0.50,
+    supportsCache: true,
+  },
+  // ── Google ──
+  {
+    id: "gemini-2.5-pro",
+    name: "Gemini 2.5 Pro",
     provider: "Google",
     inputPricePerM: 1.25,
-    outputPricePerM: 5.0,
-    supportsCache: false,
+    outputPricePerM: 10.0,
+    cacheReadPricePerM: 0.125,
+    supportsCache: true,
   },
   {
-    id: "gemini-1.5-flash",
-    name: "Gemini 1.5 Flash",
+    id: "gemini-2.5-flash",
+    name: "Gemini 2.5 Flash",
     provider: "Google",
-    inputPricePerM: 0.075,
-    outputPricePerM: 0.30,
-    supportsCache: false,
+    inputPricePerM: 0.30,
+    outputPricePerM: 2.50,
+    cacheReadPricePerM: 0.03,
+    supportsCache: true,
+  },
+  {
+    id: "gemini-2.5-flash-lite",
+    name: "Gemini 2.5 Flash-Lite",
+    provider: "Google",
+    inputPricePerM: 0.10,
+    outputPricePerM: 0.40,
+    cacheReadPricePerM: 0.01,
+    supportsCache: true,
   },
 ];
 
