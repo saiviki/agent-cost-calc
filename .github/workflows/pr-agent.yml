@@ -19,11 +19,10 @@ jobs:
         id: pragent
         uses: Codium-ai/pr-agent@main
         env:
-          OPENAI_KEY: ${{ secrets.GROK_API_KEY }}
-          OPENAI_API_BASE: "https://api.x.ai/v1"
+          OPENAI_KEY: ${{ secrets.Z_AI_API_KEY }}
+          OPENAI_API_BASE: "https://api.z.ai/api/coding/paas/v4"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "true"
           github_action_config.auto_improve: "true"
-          config.model: "grok-code-fast-1"
-          config.fallback_models: '["grok-4.3"]'
+          config.model: "openai/glm-5.1"
