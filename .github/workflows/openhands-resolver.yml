@@ -1,0 +1,28 @@
+name: OpenHands Resolver
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  openhands:
+    if: |
+      (github.event_name == 'issues' && github.event.label.name == 'fix-me') ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@openhands-agent'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: All-Hands-AI/OpenHands-resolver@main
+        with:
+          repo: ${{ github.repository }}
+          issue_number: ${{ github.event.issue.number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LLM_MODEL: "openai/glm-5.1"
+          LLM_BASE_URL: "https://api.z.ai/api/coding/paas/v4"
+          LLM_API_KEY: ${{ secrets.Z_AI_API_KEY }}
