@@ -1,0 +1,24 @@
+name: Ryzen Runner Smoke Test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: test-runner-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Hello from Ryzen
+    runs-on: [self-hosted, linux, x64, agent-cost-calc]
+    steps:
+      - uses: actions/checkout@v4
+      - name: System info
+        run: |
+          echo "Runner: $RUNNER_NAME"
+          echo "OS: $(uname -a)"
+          echo "CPU cores: $(nproc)"
+          echo "RAM: $(free -h | awk '/^Mem:/ {print $2}')"
+          echo "Docker: $(docker --version)"
