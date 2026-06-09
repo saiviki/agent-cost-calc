@@ -62,12 +62,12 @@ Verified 2026-05-09 against [OpenRouter's unified pricing API](https://openroute
 | Gemini 3 Flash | Google | $0.50 | $3.00 | $0.05 | — |
 | Grok 4.1 Fast | xAI | $0.20 | $0.50 | $0.05 | — |
 | Qwen 3.6 Plus | Alibaba | $0.325 | $1.95 | — | ✓ |
-| GLM 5.1 | Z.ai | $1.05 | $3.50 | $0.525 | ✓ |
 
 ### Budget
 
 | Model | Provider | Input /1M | Output /1M | Cache read /1M | Open? |
 |---|---|---|---|---|---|
+| GLM 5.1 | Z.ai | $0.14 | $0.14 | — | ✓ |
 | DeepSeek V4 Flash | DeepSeek | $0.14 | $0.28 | $0.0028 | ✓ |
 | Llama 3.3 70B | Meta | $0.10 | $0.32 | — | ✓ |
 | MiniMax M2.7 | MiniMax | $0.30 | $1.20 | — | ✓ |
