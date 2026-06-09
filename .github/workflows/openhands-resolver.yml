@@ -1,8 +1,9 @@
-name: OpenHands Resolver
+name: Jules Resolver
+# Replaced: openhands-resolver PyPI package broken (openhands-ai all yanked, e2b 0.17.x gone)
+# Current approach: Jules (Google AI Pro) via google-labs-code/jules-invoke@v1
+# Requires: JULES_API_KEY secret (generate at https://jules.google.com → account settings)
 on:
   issues:
-    types: [labeled]
-  pull_request:
     types: [labeled]
   issue_comment:
     types: [created]
@@ -12,136 +13,59 @@ on:
     types: [submitted]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
   issues: write
 
 jobs:
-  auto-fix:
+  jules-fix:
     if: |
-      github.event.label.name == 'fix-me' ||
+      (github.event.label.name == 'fix-me') ||
       (
         (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
         startsWith(github.event.comment.body, '@openhands-agent') &&
-        (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'COLLABORATOR' || github.event.comment.author_association == 'MEMBER')
+        (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'COLLABORATOR')
       ) ||
       (
         github.event_name == 'pull_request_review' &&
         startsWith(github.event.review.body, '@openhands-agent') &&
-        (github.event.review.author_association == 'OWNER' || github.event.review.author_association == 'COLLABORATOR' || github.event.review.author_association == 'MEMBER')
+        (github.event.review.author_association == 'OWNER' || github.event.review.author_association == 'COLLABORATOR')
       )
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - name: Invoke Jules
+        uses: google-labs-code/jules-invoke@v1
         with:
-          python-version: "3.12"
+          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          starting_branch: main
+          prompt: |
+            Please fix the following issue in this repository.
 
-      - name: Install openhands-resolver
-        run: |
-          python -m pip install --upgrade pip
-          RESOLVER_VERSION=$(pip index versions openhands-resolver 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '()')
-          pip install openhands-resolver==${RESOLVER_VERSION}
+            ## Issue: ${{ github.event.issue.title || github.event.pull_request.title }}
 
-      - name: Set issue/PR context
-        run: |
-          if [ -n "${{ github.event.review.body }}" ]; then
-            echo "ISSUE_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
-            echo "ISSUE_TYPE=pr" >> $GITHUB_ENV
-          elif [ -n "${{ github.event.issue.pull_request }}" ]; then
-            echo "ISSUE_NUMBER=${{ github.event.issue.number }}" >> $GITHUB_ENV
-            echo "ISSUE_TYPE=pr" >> $GITHUB_ENV
-          elif [ -n "${{ github.event.pull_request.number }}" ]; then
-            echo "ISSUE_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
-            echo "ISSUE_TYPE=pr" >> $GITHUB_ENV
-          else
-            echo "ISSUE_NUMBER=${{ github.event.issue.number }}" >> $GITHUB_ENV
-            echo "ISSUE_TYPE=issue" >> $GITHUB_ENV
-          fi
-          echo "COMMENT_ID=${{ github.event.comment.id || github.event.review.id || 'None' }}" >> $GITHUB_ENV
-          echo "SANDBOX_ENV_GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
+            ${{ github.event.issue.body || github.event.comment.body || github.event.review.body }}
 
-      - name: Run OpenHands resolver
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LLM_MODEL: "openai/glm-5.1"
-          LLM_BASE_URL: "https://api.z.ai/api/coding/paas/v4"
-          LLM_API_KEY: ${{ secrets.Z_AI_API_KEY }}
-        run: |
-          cd /tmp && python -m openhands_resolver.resolve_issue \
-            --repo ${{ github.repository }} \
-            --issue-number ${{ env.ISSUE_NUMBER }} \
-            --issue-type ${{ env.ISSUE_TYPE }} \
-            --max-iterations 50 \
-            --comment-id ${{ env.COMMENT_ID }}
+            ## Instructions
 
-      - name: Check result
-        id: check_result
-        run: |
-          if cd /tmp && grep -q '"success":true' output/output.jsonl 2>/dev/null; then
-            echo "RESOLUTION_SUCCESS=true" >> $GITHUB_OUTPUT
-          else
-            echo "RESOLUTION_SUCCESS=false" >> $GITHUB_OUTPUT
-          fi
+            1. Analyze the issue and identify the root cause
+            2. Implement a minimal, targeted fix — do not refactor unrelated code
+            3. Add or update tests if applicable
+            4. Ensure CI passes (run any existing test suites)
+            5. Create a pull request with a clear description referencing this issue
 
-      - name: Upload resolver output
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: resolver-output
-          path: /tmp/output/output.jsonl
-          retention-days: 30
-
-      - name: Create PR or push branch
-        if: always()
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
-          LLM_MODEL: "openai/glm-5.1"
-          LLM_BASE_URL: "https://api.z.ai/api/coding/paas/v4"
-          LLM_API_KEY: ${{ secrets.Z_AI_API_KEY }}
-        run: |
-          if [ "${{ steps.check_result.outputs.RESOLUTION_SUCCESS }}" == "true" ]; then
-            cd /tmp && python -m openhands_resolver.send_pull_request \
-              --issue-number ${{ env.ISSUE_NUMBER }} \
-              --pr-type draft | tee pr_result.txt
-            grep "draft created" pr_result.txt | sed 's/.*\///g' > pr_number.txt || true
-          else
-            cd /tmp && python -m openhands_resolver.send_pull_request \
-              --issue-number ${{ env.ISSUE_NUMBER }} \
-              --pr-type branch \
-              --send-on-failure | tee branch_result.txt
-            grep "branch created" branch_result.txt | sed 's/.*\///g; s/.expand=1//g' > branch_name.txt || true
-          fi
+            Reference issue number: #${{ github.event.issue.number || github.event.pull_request.number }}
 
       - name: Comment on issue
-        uses: actions/github-script@v7
         if: always()
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const fs = require('fs');
-            const issueNumber = process.env.ISSUE_NUMBER;
-            const success = '${{ steps.check_result.outputs.RESOLUTION_SUCCESS }}' === 'true';
-            let prNumber = '', branchName = '', logContent = '';
-            try {
-              logContent = fs.readFileSync(success ? '/tmp/pr_result.txt' : '/tmp/branch_result.txt', 'utf8').trim();
-            } catch (e) {}
-            try {
-              if (success) prNumber = fs.readFileSync('/tmp/pr_number.txt', 'utf8').trim();
-              else branchName = fs.readFileSync('/tmp/branch_name.txt', 'utf8').trim();
-            } catch (e) {}
-            let body;
-            if (success && prNumber) {
-              body = `OpenHands created draft PR #${prNumber}. Please review the changes.`;
-            } else if (branchName) {
-              body = `OpenHands attempted a fix on branch \`${branchName}\` but resolution was unsuccessful. Manual review required.`;
-            } else {
-              body = `OpenHands could not resolve this issue. Check the [workflow logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}).`;
-            }
+            const issueNumber = context.payload.issue?.number || context.payload.pull_request?.number;
+            if (!issueNumber) return;
             github.rest.issues.createComment({
-              issue_number: parseInt(issueNumber),
+              issue_number: issueNumber,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body
+              body: '🤖 Jules has been invoked to resolve this issue. A pull request will be created when the task completes. Track progress at https://jules.google.com'
             });
