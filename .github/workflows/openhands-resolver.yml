@@ -1,6 +1,6 @@
 name: Jules Resolver
 # Replaced: openhands-resolver PyPI package broken (openhands-ai all yanked, e2b 0.17.x gone)
-# Current approach: Jules (Google AI Pro) via google-labs-code/jules-invoke@v1
+# Current approach: Jules (Google AI Pro) via google-labs-code/jules-action@v1.0.0
 # Requires: JULES_API_KEY secret (generate at https://jules.google.com → account settings)
 on:
   issues:
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Invoke Jules
-        uses: google-labs-code/jules-invoke@v1
+        uses: google-labs-code/jules-action@v1.0.0
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           starting_branch: main
