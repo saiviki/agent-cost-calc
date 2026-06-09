@@ -180,20 +180,19 @@ export const MODELS: Model[] = [
     outputPricePerM: 1.95,
     supportsCache: false,
   },
+  // ── BUDGET ──
   {
     id: "glm-5.1",
     name: "GLM 5.1",
     provider: "Z.ai",
     isOpen: true,
-    tier: "mid",
-    strengths: ["coding", "reasoning", "general"],
-    contextK: 202,
-    inputPricePerM: 1.05,
-    outputPricePerM: 3.50,
-    cacheReadPricePerM: 0.525,
-    supportsCache: true,
+    tier: "budget",
+    strengths: ["coding", "long-context"],
+    contextK: 128,
+    inputPricePerM: 0.14,
+    outputPricePerM: 0.14,
+    supportsCache: false,
   },
-  // ── BUDGET ──
   {
     id: "deepseek-v4-flash",
     name: "DeepSeek V4 Flash",
