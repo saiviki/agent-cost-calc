@@ -470,3 +470,50 @@ it("throws TraceParseError NO_ASSISTANT_TURNS when jsonl has no qualifying assis
 - Non-Anthropic trace formats (OpenAI, Gemini) — explicitly out of scope per BUILD-PLAN §"Out of scope".
 - Async / streaming / Server-Sent Events — pure sync parsing only.
 - Browser `File` API parsing — caller is responsible for reading the file into a `string` before calling `parseTrace`.
+
+---
+
+## 11. OpenAI + Gemini ingestion (increment c2)
+
+The single-JSON/array path (`parseAnthropicJson`) detects the provider **per element** and ingests OpenAI and Gemini usage objects alongside Anthropic ones. The `.jsonl` path (`parseJsonl`, Claude Code session format) stays **Anthropic-only** and is unchanged.
+
+### 11.1 Provider detection (`detectElementUsage`)
+
+For each parsed element the provider is inferred from the usage shape:
+
+- **Anthropic** — `obj.usage` present and contains `input_tokens`.
+- **OpenAI** — `obj.usage` present and contains `prompt_tokens`.
+- **Gemini** — `obj.usage_metadata` present (object), OR `prompt_token_count` appears at the element top level. The usage object read is `obj.usage_metadata` (or the element itself when flat).
+- **unknown** — `obj.usage` is an object but carries neither `input_tokens` nor `prompt_tokens` (returned with the usage object so the skip warning can fire).
+
+A provider-aware qualifying check gates each element (Anthropic `input_tokens`, OpenAI `prompt_tokens`, Gemini `prompt_token_count` / `usage_metadata` presence). If no element qualifies, the parser still throws `NO_USAGE_FIELDS` (message updated to "recognized usage field"; code unchanged).
+
+### 11.2 Usage normalization (`normalizeUsage` → heuristic aggregate)
+
+The `RunTokens` aggregate (`avgInputTokens`, `avgOutputTokens`, `avgCacheReadTokens`, `avgCacheCreationTokens`) is mapped per provider. **This aggregate feeds the heuristic counterfactual only; `raw_usage` is the billing ground truth.**
+
+- **Anthropic** — `input_tokens` is already NON-cached (cache is reported in separate fields); read directly.
+- **OpenAI** — `prompt_tokens` is TOTAL prompt, so `input = max(0, prompt_tokens - prompt_tokens_details.cached_tokens)`; `cacheRead = cached_tokens`; `output = completion_tokens` (`reasoning_tokens` is already included in `completion_tokens` — surfaced in `raw_usage` only, not double-counted here); `cacheCreation = 0`.
+- **Gemini** — `prompt_token_count` is TOTAL prompt, so `input = max(0, prompt_token_count - cached_content_token_count)`; `cacheRead = cached_content_token_count`; `output = candidates_token_count + thoughts_token_count` (thoughts are billed at the output rate, so they are added); `cacheCreation = 0`.
+
+Non-Anthropic providers take a **clean-parse** path: `normalizeUsage` pushes NO warnings, so `result.warnings.length === 0` when all fields are present (the Case 1 invariant extends to OpenAI/Gemini).
+
+### 11.3 `raw_usage` preserved verbatim (ground truth for reconstruction)
+
+`extractRawCall` shallow-copies the provider usage object into `raw_usage` so `reconstructCost` / `computeCallCost` can read the exact provider fields (`docs/RESEARCH-validation-methodology.md §2.1`):
+
+- **Anthropic** — `{...obj.usage}` → `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`.
+- **OpenAI** — `{...obj.usage}` → `prompt_tokens`, `completion_tokens`, `prompt_tokens_details.cached_tokens`, `completion_tokens_details.reasoning_tokens` (nested objects preserved by reference).
+- **Gemini** — `{usage_metadata: {...obj.usage_metadata}}` → the `usage_metadata` KEY is preserved (not flattened) because `reconstructCost.detectProvider` keys on `"usage_metadata" in raw_usage`; flattening would drop provider detection on traces with no cache. The nested `prompt_token_count`, `candidates_token_count`, `cached_content_token_count`, `thoughts_token_count` are preserved verbatim.
+
+`call_flags.provider` is set to the detected provider (anthropic | openai | gemini | unknown). `call_flags.model` reads `obj.model` for Anthropic/OpenAI and `obj.model_version ?? obj.model` for Gemini.
+
+### 11.4 Content / tool extraction (best-effort for non-Anthropic shapes)
+
+`full_text_content.completionText` is extracted via `extractTextFromContent`, which understands Anthropic `{type:"text", text}` blocks. OpenAI (`choices[].message.content`) and Gemini content shapes are not matched, so `completionText` is `""` for those — **cost accuracy comes from `raw_usage`, not from re-tokenized text** in this increment. `promptText` stays `""` (single-JSON responses do not echo the request prompt, same as Anthropic today). Tool-call counting only recognizes Anthropic `tool_use` blocks; non-Anthropic tool shapes report `0` (best-effort).
+
+### 11.5 Out of scope (still)
+
+- `.jsonl` path generalization (Claude Code format stays Anthropic).
+- Re-tokenization of OpenAI/Gemini prompt/completion text (Phase 2; the text is not captured for those shapes here).
+- Billed ±5% validation — requires a real operator invoice (the `it.todo` accuracy gates remain).

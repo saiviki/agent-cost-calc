@@ -41,7 +41,7 @@ export type ParsedRun = {
 // re-derive billed cost from provider raw_usage as ground truth.
 export type CallFlags = {
   model?: string; // message.model / top-level model
-  provider: "anthropic" | "openai" | "gemini" | "unknown"; // "anthropic" today (parser is Anthropic-only)
+  provider: "anthropic" | "openai" | "gemini" | "unknown"; // C2: single-JSON/array path now detects all three; .jsonl stays Anthropic
   is_batch?: boolean; // Phase 1 correction #4 (batch = 50% off). Default false.
   hasMultimodal?: boolean; // any image/file block seen in captured content
   cacheTtlHint?: "5m" | "1h"; // best-effort from cache_control.ttl; undefined if not detectable
@@ -61,6 +61,10 @@ export type RawCall = {
   call_flags: CallFlags;
   request_id?: string;
 };
+
+// C2 — provider detected per element in the single-JSON/array path (parseAnthropicJson).
+// The .jsonl path (Claude Code) stays Anthropic-only and ignores this type.
+export type UsageProvider = "anthropic" | "openai" | "gemini" | "unknown";
 
 export class TraceParseError extends Error {
   constructor(
@@ -262,16 +266,109 @@ function finalizeSignals(
   };
 }
 
+// ── C2 — multi-provider ingestion (docs/SPEC-trace-parser.md §11) ──
+// Single-JSON/array path only (parseAnthropicJson). The .jsonl path (Claude Code)
+// stays Anthropic-only. These helpers are PURE and push NO warnings, so the
+// clean-parse invariant (Case 1: result.warnings.length === 0) is preserved.
+
+// Detect provider + the usage object to read from one parsed element.
+// Anthropic/OpenAI: usage at obj.usage (field-named). Gemini: usage at
+// obj.usage_metadata (or flat on obj when prompt_token_count is top-level).
+// Returns the usage object even when unrecognized so the caller can emit the
+// Anthropic-style skip warning.
+function detectElementUsage(
+  obj: Record<string, unknown> | undefined,
+): { provider: UsageProvider; usage: Record<string, unknown> | undefined } {
+  if (obj) {
+    const u = obj.usage;
+    if (u && typeof u === "object") {
+      const usage = u as Record<string, unknown>;
+      if ("input_tokens" in usage) return { provider: "anthropic", usage };
+      if ("prompt_tokens" in usage) return { provider: "openai", usage };
+      return { provider: "unknown", usage };
+    }
+    const um = obj.usage_metadata;
+    if ((um && typeof um === "object") || "prompt_token_count" in obj) {
+      const usage =
+        um && typeof um === "object"
+          ? (um as Record<string, unknown>)
+          : obj;
+      return { provider: "gemini", usage };
+    }
+  }
+  return { provider: "unknown", usage: undefined };
+}
+
+// Provider-aware usage normalization for the heuristic RunTokens aggregate.
+// GROUND TRUTH lives in raw_usage (preserved verbatim by extractRawCall); these
+// numbers feed only the heuristic counterfactual. Anthropic input_tokens is
+// NON-cached (cache is separate); OpenAI prompt_tokens / Gemini prompt_token_count
+// are TOTAL prompt, so cached is SUBTRACTED to get non-cached input. Pure: no warnings.
+function normalizeUsage(
+  usage: Record<string, unknown>,
+  provider: UsageProvider,
+): { input: number; output: number; cacheRead: number; cacheCreation: number } {
+  const n = (v: unknown): number =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
+  const asObj = (v: unknown): Record<string, unknown> | undefined =>
+    v && typeof v === "object" ? (v as Record<string, unknown>) : undefined;
+
+  if (provider === "openai") {
+    const promptTokens = n(usage.prompt_tokens);
+    const cached = n(asObj(usage.prompt_tokens_details)?.cached_tokens);
+    return {
+      input: Math.max(0, promptTokens - cached),
+      output: n(usage.completion_tokens),
+      cacheRead: cached,
+      cacheCreation: 0,
+    };
+  }
+  if (provider === "gemini") {
+    const promptTokens = n(usage.prompt_token_count);
+    const cached = n(usage.cached_content_token_count);
+    return {
+      input: Math.max(0, promptTokens - cached),
+      output: n(usage.candidates_token_count) + n(usage.thoughts_token_count),
+      cacheRead: cached,
+      cacheCreation: 0,
+    };
+  }
+  if (provider === "anthropic") {
+    return {
+      input: n(usage.input_tokens),
+      output: n(usage.output_tokens),
+      cacheRead: n(usage.cache_read_input_tokens),
+      cacheCreation: n(usage.cache_creation_input_tokens),
+    };
+  }
+  return { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 };
+}
+
 // Extract a single run's token block from an object that holds a `usage` object.
 // `turnLabel` is used in warnings. Returns null when the run must be skipped
 // (e.g. input_tokens absent/non-number — caller decides the consequence).
+// `provider` defaults to 'anthropic' (the .jsonl path + the Anthropic clean-parse
+// contract). Non-Anthropic providers take a warning-free normalizeUsage path.
 function extractRun(
   usage: Record<string, unknown> | undefined,
   content: unknown,
   turnLabel: string,
   warnings: string[],
+  provider: UsageProvider = "anthropic",
 ): RunTokens | null {
   if (!usage || typeof usage !== "object") return null;
+
+  if (provider !== "anthropic") {
+    // C2 — clean parse: OpenAI/Gemini responses push NO warnings.
+    const norm = normalizeUsage(usage, provider);
+    return {
+      input: norm.input,
+      output: norm.output,
+      cacheRead: norm.cacheRead,
+      cacheCreation: norm.cacheCreation,
+      toolCalls: countToolCalls(content),
+    };
+  }
 
   const input = readUsageNumber(usage.input_tokens, "input_tokens", turnLabel, warnings, true);
   if (!input.valid) return null;
@@ -369,18 +466,41 @@ function extractRawCall(
   fullObj: Record<string, unknown> | undefined,
   usage: Record<string, unknown>,
   content: unknown,
+  provider: UsageProvider = "anthropic",
 ): RawCall {
+  // C2 — raw_usage is preserved VERBATIM so reconstructCost reads the exact
+  // provider fields. Anthropic/OpenAI: shallow-copy the response.usage fields.
+  // Gemini raw_usage always carries a usage_metadata key so
+  // reconstructCost.detectProvider recognizes it even for flat (non-standard)
+  // elements; detectElementUsage resolves `usage` to the nested usage_metadata
+  // object OR the element itself (flat case), so { ...usage } covers both.
+  const rawUsage: Record<string, unknown> =
+    provider === "gemini"
+      ? { usage_metadata: { ...usage } }
+      : { ...usage };
+
+  // model: anthropic/openai read fullObj.model; gemini prefers model_version.
+  const model =
+    provider === "gemini"
+      ? fullObj && typeof fullObj.model_version === "string"
+        ? fullObj.model_version
+        : fullObj && typeof fullObj.model === "string"
+          ? fullObj.model
+          : undefined
+      : fullObj && typeof fullObj.model === "string"
+        ? fullObj.model
+        : undefined;
+
   return {
-    raw_usage: { ...usage },
+    raw_usage: rawUsage,
     raw_request: fullObj,
     full_text_content: {
       promptText: "",
       completionText: extractTextFromContent(content),
     },
     call_flags: {
-      model:
-        fullObj && typeof fullObj.model === "string" ? fullObj.model : undefined,
-      provider: "anthropic",
+      model,
+      provider,
       is_batch: false, // responses do not reveal batch; correction #4 hooks here when request metadata is available
       hasMultimodal: contentHasMultimodal(content),
       cacheTtlHint: detectCacheTtl(fullObj),
@@ -485,33 +605,57 @@ function parseAnthropicJson(parsed: unknown, warnings: string[]): ParsedRun {
   elements.forEach((el, idx) => {
     const turnLabel = `Element ${idx + 1}`;
     const obj = el && typeof el === "object" ? (el as Record<string, unknown>) : undefined;
-    const usage =
-      obj && obj.usage && typeof obj.usage === "object"
-        ? (obj.usage as Record<string, unknown>)
-        : undefined;
 
-    if (!usage || usage.input_tokens === undefined) {
-      // Skip elements lacking usage.input_tokens; warn per skipped element.
-      warnings.push(`${turnLabel}: no usage.input_tokens; skipped`);
+    // C2 — detect provider per element so a pasted OpenAI or Gemini response is
+    // ingested alongside Anthropic ones (docs/SPEC-trace-parser.md §11).
+    const { provider, usage } = detectElementUsage(obj);
+
+    if (!usage || !obj) {
+      warnings.push(`${turnLabel}: no recognized usage; skipped`);
       return;
     }
 
-    const run = extractRun(usage, obj?.content, turnLabel, warnings);
+    // Qualifying check is provider-aware: Anthropic input_tokens, OpenAI
+    // prompt_tokens, Gemini prompt_token_count / usage_metadata presence.
+    const qualified =
+      (provider === "anthropic" && usage.input_tokens !== undefined) ||
+      (provider === "openai" && usage.prompt_tokens !== undefined) ||
+      (provider === "gemini" &&
+        (usage.prompt_token_count !== undefined ||
+          obj.usage_metadata !== undefined ||
+          "prompt_token_count" in obj));
+    if (!qualified) {
+      warnings.push(`${turnLabel}: no recognized usage field; skipped`);
+      return;
+    }
+
+    const run = extractRun(usage, obj?.content, turnLabel, warnings, provider);
     if (!run) return;
 
-    if (sourceModel === undefined && obj && typeof obj.model === "string") {
-      sourceModel = obj.model;
+    // sourceModel: anthropic/openai read obj.model; gemini prefers model_version.
+    if (sourceModel === undefined && obj) {
+      const m =
+        provider === "gemini"
+          ? typeof obj.model_version === "string"
+            ? obj.model_version
+            : typeof obj.model === "string"
+              ? obj.model
+              : undefined
+          : typeof obj.model === "string"
+            ? obj.model
+            : undefined;
+      if (typeof m === "string") sourceModel = m;
     }
-    // C1 — each qualifying element is an assistant turn in Anthropic JSON.
+    // C1 — each qualifying element is an assistant turn.
     accumulateSignals(obj?.content, signalAcc, true);
     runsData.push(run);
-    rawCalls.push(extractRawCall(obj, usage, obj?.content));
+    rawCalls.push(extractRawCall(obj, usage, obj?.content, provider));
   });
 
-  // If NO element passed the usage.input_tokens check → NO_USAGE_FIELDS.
+  // If NO element carried a recognized usage field → NO_USAGE_FIELDS.
   if (runsData.length === 0) {
     throw new TraceParseError(
-      "JSON parsed but no object contained usage.input_tokens.",
+      "JSON parsed but no object contained a recognized usage field.",
       "NO_USAGE_FIELDS",
     );
   }

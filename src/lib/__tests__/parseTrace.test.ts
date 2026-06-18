@@ -520,3 +520,170 @@ describe("accuracy harness (real fixtures)", () => {
   );
   it.todo("BILLED accuracy gate (needs real invoice): droid-run within ±5%");
 });
+
+// C2 — OpenAI + Gemini ingestion in the single-JSON/array path (parseAnthropicJson).
+// ADDITIVE: existing parseTrace tests remain unchanged. The .jsonl path stays
+// Anthropic-only. raw_usage is preserved VERBATIM for reconstructCost; the
+// normalized aggregate (avgInputTokens etc.) feeds the heuristic counterfactual
+// only. See docs/SPEC-trace-parser.md §11.
+describe("parseTrace — OpenAI + Gemini ingestion", () => {
+  it("parses a single OpenAI Chat Completions response (prompt + cached + reasoning)", () => {
+    const input = JSON.stringify({
+      model: "gpt-5.5",
+      usage: {
+        prompt_tokens: 1000,
+        completion_tokens: 200,
+        prompt_tokens_details: { cached_tokens: 400 },
+        completion_tokens_details: { reasoning_tokens: 50 },
+      },
+      choices: [{ message: { role: "assistant", content: "hi" } }],
+    });
+
+    const result = parseTrace(input);
+
+    expect(result.runs).toBe(1);
+    expect(result.sourceModel).toBe("gpt-5.5");
+    // prompt_tokens (1000) - cached (400) = 600 non-cached input
+    expect(result.avgInputTokens).toBe(600);
+    expect(result.avgOutputTokens).toBe(200);
+    expect(result.avgCacheReadTokens).toBe(400);
+    expect(result.avgCacheCreationTokens).toBe(0);
+    expect(result.rawCalls![0].call_flags.provider).toBe("openai");
+    // raw_usage preserved verbatim (shallow copy of obj.usage)
+    expect(result.rawCalls![0].raw_usage.prompt_tokens).toBe(1000);
+    expect(
+      (
+        result.rawCalls![0].raw_usage.prompt_tokens_details as {
+          cached_tokens: number;
+        }
+      ).cached_tokens,
+    ).toBe(400);
+    // clean-parse invariant: OpenAI responses push NO warnings
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it("parses an array of OpenAI responses and averages the non-cached input", () => {
+    const input = JSON.stringify([
+      {
+        model: "gpt-5.5",
+        usage: {
+          prompt_tokens: 1000,
+          completion_tokens: 200,
+          prompt_tokens_details: { cached_tokens: 400 },
+        },
+      },
+      {
+        model: "gpt-5.5",
+        usage: {
+          prompt_tokens: 800,
+          completion_tokens: 100,
+          prompt_tokens_details: { cached_tokens: 0 },
+        },
+      },
+    ]);
+
+    const result = parseTrace(input);
+
+    expect(result.runs).toBe(2);
+    // (600 + 800) / 2 = 700
+    expect(result.avgInputTokens).toBe(700);
+    // (400 + 0) / 2 = 200
+    expect(result.avgCacheReadTokens).toBe(200);
+    expect(result.rawCalls).toHaveLength(2);
+    expect(result.rawCalls![0].call_flags.provider).toBe("openai");
+    expect(result.rawCalls![1].call_flags.provider).toBe("openai");
+  });
+
+  it("parses a single Gemini response (usage_metadata with cached + thoughts)", () => {
+    const input = JSON.stringify({
+      model_version: "gemini-3.1-pro",
+      usage_metadata: {
+        prompt_token_count: 1000,
+        candidates_token_count: 150,
+        cached_content_token_count: 300,
+        thoughts_token_count: 50,
+      },
+    });
+
+    const result = parseTrace(input);
+
+    expect(result.runs).toBe(1);
+    expect(result.sourceModel).toBe("gemini-3.1-pro");
+    // prompt_token_count (1000) - cached (300) = 700 non-cached input
+    expect(result.avgInputTokens).toBe(700);
+    // candidates (150) + thoughts (50) = 200
+    expect(result.avgOutputTokens).toBe(200);
+    expect(result.avgCacheReadTokens).toBe(300);
+    expect(result.avgCacheCreationTokens).toBe(0);
+    expect(result.rawCalls![0].call_flags.provider).toBe("gemini");
+    // raw_usage preserves the `usage_metadata` key verbatim (reconstructCost.detectProvider keys on it)
+    expect(
+      (
+        result.rawCalls![0].raw_usage.usage_metadata as {
+          candidates_token_count: number;
+        }
+      ).candidates_token_count,
+    ).toBe(150);
+    // clean-parse invariant
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it("parses a flat Gemini response (prompt_token_count top-level, no usage_metadata) — P3 regression", () => {
+    // Flat (non-standard) Gemini: counts live at the element top level, NOT
+    // nested under usage_metadata. raw_usage MUST wrap them under a
+    // usage_metadata key so reconstructCost.detectProvider recognizes gemini.
+    const input = JSON.stringify({
+      model_version: "gemini-3.1-pro",
+      prompt_token_count: 1000,
+      candidates_token_count: 150,
+    });
+
+    const result = parseTrace(input);
+
+    expect(result.runs).toBe(1);
+    expect(result.rawCalls![0].call_flags.provider).toBe("gemini");
+    // The P3 guard: flat fields are wrapped under usage_metadata (not left flat).
+    expect(
+      (
+        result.rawCalls![0].raw_usage.usage_metadata as {
+          prompt_token_count: number;
+        }
+      ).prompt_token_count,
+    ).toBe(1000);
+    expect(
+      (
+        result.rawCalls![0].raw_usage.usage_metadata as {
+          candidates_token_count: number;
+        }
+      ).candidates_token_count,
+    ).toBe(150);
+    // Full round-trip via reconstructCost must NOT throw (the P3 symptom).
+    const model = MODELS.find((m) => m.id === "gemini-3.1-pro")!;
+    const reconstructed = reconstructCost({
+      rawCalls: result.rawCalls ?? [],
+      model,
+    });
+    expect(reconstructed.totalComputed).toBeGreaterThan(0);
+    // clean-parse invariant
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it("ingests a mixed cross-provider array (Anthropic + OpenAI)", () => {
+    const input = JSON.stringify([
+      {
+        model: "claude-sonnet-4-6",
+        usage: { input_tokens: 500, output_tokens: 100 },
+      },
+      {
+        model: "gpt-5.5",
+        usage: { prompt_tokens: 1000, completion_tokens: 200 },
+      },
+    ]);
+
+    const result = parseTrace(input);
+
+    expect(result.runs).toBe(2);
+    expect(result.rawCalls![0].call_flags.provider).toBe("anthropic");
+    expect(result.rawCalls![1].call_flags.provider).toBe("openai");
+  });
+});
