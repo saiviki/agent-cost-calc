@@ -1,5 +1,5 @@
 {
-  "_note": "SYNTHETIC fixtures. billedCostPerRun values are placeholders, NOT real invoices. The real-fixture accuracy gate in src/lib/__tests__/parseTrace.test.ts is test.todo until an operator drops in real traces with actual billed cost. See README.md.",
+  "_note": "SYNTHETIC fixtures. billedCostPerRun values are placeholders, NOT real invoices (null = no real invoice yet). billedCostPerRun is PER RUN — the gate multiplies it by the trace's run count to get the total billed. The billed-accuracy gate stays it.todo until an operator drops in real traces + real invoices; the ±5% CLAIM requires ≥3 diverse real traces (methodology §4.1). Drop-in steps + runbook: docs/RUNBOOK-billed-accuracy.md; helper: src/lib/__tests__/billedGate.helper.ts. See fixtures/README.md.",
   "_reconstructed_note": "Deterministic reconstruction from synthetic raw_usage + dated prices (NOT a real bill). expectedReconstructedCost = reconstructCost() total over each fixture's captured rawCalls using the fixture's source-model prices. billedCostPerRun stays null until real invoices land.",
   "claude-code-session.jsonl": {
     "expectedRuns": 2,

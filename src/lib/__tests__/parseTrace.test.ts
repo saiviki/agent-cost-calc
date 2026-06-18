@@ -458,7 +458,9 @@ describe("rawCalls capture (Phase 1 ground truth)", () => {
 //   - Harness-math correctness: deterministic reconstruction from synthetic
 //     raw_usage + dated prices — REAL tests now (no real bill needed).
 //   - BILLED accuracy gate: ±5% vs a REAL operator invoice — stays it.todo until
-//     an operator drops in real traces with actual billed cost.
+//     an operator drops in real traces + real invoices. The ±5% CLAIM needs ≥3
+//     diverse real traces (methodology §4.1) + the §4.6 hard rule. Drop-in steps:
+//     docs/RUNBOOK-billed-accuracy.md; helper: billedGate.helper.ts.
 describe("accuracy harness (real fixtures)", () => {
   // ── Harness-math correctness (REAL tests) ──
   it("reconstructs claude-code-session.jsonl to the hand-computed Sonnet total (0.03735)", () => {
@@ -515,10 +517,22 @@ describe("accuracy harness (real fixtures)", () => {
   });
 
   // ── BILLED accuracy gate (TODO — needs real operator invoices) ──
+  // A SINGLE passing fixture is necessary but NOT sufficient for the ±5% claim:
+  // docs/RESEARCH-validation-methodology.md §4.1 requires ≥3 diverse real traces
+  // (multi-turn agent w/ tools, ≥1 with caching, ≥1 reasoning model, mix of
+  // text/code/structured). The §4.6 hard rule: "If Phase 1 fails or raw_* not
+  // captured, do not claim ±5%." Drop-in steps + the honesty rule:
+  // docs/RUNBOOK-billed-accuracy.md. Helper: src/lib/__tests__/billedGate.helper.ts.
   it.todo(
     "BILLED accuracy gate (needs real invoice): claude-code-session within ±5%",
   );
   it.todo("BILLED accuracy gate (needs real invoice): droid-run within ±5%");
+  it.todo(
+    "BILLED accuracy gate (needs real invoice): OpenAI response within ±5% — drop a real OpenAI usage response into fixtures/ and its billed cost into expected.json; see docs/RUNBOOK-billed-accuracy.md",
+  );
+  it.todo(
+    "BILLED accuracy gate (needs real invoice): Gemini response within ±5% — drop a real Gemini usage_metadata response into fixtures/ and its billed cost into expected.json; see docs/RUNBOOK-billed-accuracy.md",
+  );
 });
 
 // C2 — OpenAI + Gemini ingestion in the single-JSON/array path (parseAnthropicJson).
