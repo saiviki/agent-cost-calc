@@ -1,0 +1,24 @@
+[
+  {
+    "model": "glm-5.1",
+    "usage": {
+      "input_tokens": 3000,
+      "output_tokens": 800,
+      "cache_read_input_tokens": 5000,
+      "cache_creation_input_tokens": 2000
+    },
+    "content": [
+      { "type": "tool_use", "id": "tu_1", "name": "Execute", "input": {} }
+    ]
+  },
+  {
+    "model": "glm-5.1",
+    "usage": {
+      "input_tokens": 3500,
+      "output_tokens": 700,
+      "cache_read_input_tokens": 6000,
+      "cache_creation_input_tokens": 0
+    },
+    "content": []
+  }
+]
