@@ -12,10 +12,10 @@
 // B's real tokenization. Output-side cost diff is NOISY (B generates different
 // text). The methodology says: "isolate the input component if needed."
 //
-// Actual-cost math (cost_B) reuses Anthropic rates TODAY (mirroring reconstructCost,
-// inlined locally — we do not refactor reconstructCost). OpenAI/Gemini actual-cost
-// is reached via a PLUGGABLE actualCostFn (increment c). Non-Anthropic target +
-// default actualCostFn => throws UnsupportedProvider (same posture as reconstructCost).
+// Actual-cost math (cost_B) DELEGATES to computeCallCost (reconstructCost) by
+// default — all providers (Anthropic/OpenAI/Gemini) via each model's REAL
+// cacheReadPricePerM. A pluggable actualCostFn still overrides per-pair. Unknown
+// usage shape -> computeCallCost throws ReconstructError UNKNOWN_PRICING.
 //
 // NEVER reads the model verbosity multiplier (the heuristic this layer replaces) —
 // countTokens is the only cross-model bridge on the counterfactual side. See docs/SPEC-phase3-replay.md.
@@ -23,6 +23,7 @@
 import type { Model } from "./models";
 import type { RawCall } from "./parseTrace";
 import { countTokens, type TokenizerMethod } from "./tokenize";
+import { computeCallCost } from "./reconstructCost";
 
 export type ReplayItem = {
   index: number;
@@ -87,6 +88,37 @@ function num(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
 }
 
+// Provider-agnostic actual token counts for evaluateReplay's diff side. Reads
+// Anthropic (input_tokens/output_tokens), OpenAI (prompt_tokens/completion_tokens),
+// Gemini (prompt_token_count / candidates+thoughts) via shape detection.
+function actualTokenCounts(usage: Record<string, unknown>): {
+  input: number;
+  output: number;
+} {
+  if ("input_tokens" in usage) {
+    return { input: num(usage.input_tokens), output: num(usage.output_tokens) };
+  }
+  if ("prompt_tokens" in usage) {
+    return {
+      input: num(usage.prompt_tokens),
+      output: num(usage.completion_tokens),
+    };
+  }
+  if ("prompt_token_count" in usage || "usage_metadata" in usage) {
+    const umObj =
+      usage.usage_metadata &&
+      typeof usage.usage_metadata === "object" &&
+      !Array.isArray(usage.usage_metadata)
+        ? (usage.usage_metadata as Record<string, unknown>)
+        : usage;
+    return {
+      input: num(umObj.prompt_token_count),
+      output: num(umObj.candidates_token_count) + num(umObj.thoughts_token_count),
+    };
+  }
+  return { input: 0, output: 0 };
+}
+
 /**
  * Adapts captured rawCalls into replay descriptors the operator runs against
  * model B. NO network. Each ReplayItem carries the captured promptText + the
@@ -126,26 +158,6 @@ export function buildReplayPlan(rawCalls: RawCall[], target: Model): ReplayPlan 
 }
 
 /**
- * Anthropic actual-cost from B's raw_usage (mirrors reconstructCost's Anthropic
- * math, inlined — no batch, no cache-1h split since B's real usage does not echo
- * the TTL). input + cache_read + cache_creation(5m) + output, at model list rates.
- */
-export function anthropicActualCost(
-  usage: Record<string, unknown>,
-  model: Model,
-): number {
-  const input = num(usage.input_tokens);
-  const output = num(usage.output_tokens);
-  const cacheRead = num(usage.cache_read_input_tokens);
-  const cacheCreate = num(usage.cache_creation_input_tokens);
-  const inputCost = (input / 1e6) * model.inputPricePerM;
-  const cacheReadCost = (cacheRead / 1e6) * (model.cacheReadPricePerM ?? 0);
-  const cacheWriteCost = (cacheCreate / 1e6) * (model.cacheWritePricePerM ?? 0);
-  const outputCost = (output / 1e6) * model.outputPricePerM;
-  return inputCost + cacheReadCost + cacheWriteCost + outputCost;
-}
-
-/**
  * Consumes operator-supplied ACTUAL B usages (one per plan item, call-order
  * aligned) and computes per-pair counterfactual-vs-actual diffs, median/P95, and
  * the Phase 3 acceptance gate. The counterfactual side (cost_B') re-tokenizes the
@@ -168,30 +180,15 @@ export function evaluateReplay(
     );
   }
 
-  const isAnthropic =
-    target.provider.includes("Anthropic") || target.id.includes("claude");
-  if (!isAnthropic && !actualCostFn) {
-    throw new ReplayError(
-      `actual-cost for non-Anthropic target '${target.name}' requires an actualCostFn (increment c)`,
-      "UNSUPPORTED_PROVIDER",
-    );
-  }
-  const fn: ActualCostFn = actualCostFn ?? anthropicActualCost;
+  // Default actual-cost delegates to computeCallCost (all providers; OpenAI/Gemini
+  // via the model's REAL cacheReadPricePerM). Unknown usage shape -> computeCallCost
+  // throws ReconstructError UNKNOWN_PRICING (no more UNSUPPORTED_PROVIDER here).
+  const fn: ActualCostFn =
+    actualCostFn ?? ((usage, model) => computeCallCost(usage, model).cost);
 
   const pairs: ReplayPair[] = plan.items.map((item, i) => {
     const usage = actuals[i].usage;
-    const actInput =
-      "input_tokens" in usage
-        ? num(usage.input_tokens)
-        : "prompt_tokens" in usage
-          ? num(usage.prompt_tokens)
-          : 0;
-    const actOutput =
-      "output_tokens" in usage
-        ? num(usage.output_tokens)
-        : "completion_tokens" in usage
-          ? num(usage.completion_tokens)
-          : 0;
+    const { input: actInput, output: actOutput } = actualTokenCounts(usage);
 
     const cfInput =
       item.promptText.length > 0

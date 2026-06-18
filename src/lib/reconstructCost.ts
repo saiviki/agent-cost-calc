@@ -1,10 +1,9 @@
 // Phase 1 reconstruction harness. Implements docs/RESEARCH-validation-methodology.md §4.2.
-// Re-derives billed cost from provider raw_usage (GROUND TRUTH) + correct Anthropic
+// Re-derives billed cost from provider raw_usage (GROUND TRUTH) + correct provider
 // cache/batch rules, for comparison against actual invoice. Does NOT use the
 // heuristic outputMultiplier — this is the deliverable's hard-rule foundation.
-// Provider support: Anthropic fully correct (what parseTrace ingests today).
-// OpenAI/Gemini are DETECTED but throw UnsupportedProvider — we do not guess
-// their model-specific cached rates (deliverable §3.4 'do not guess').
+// Provider support: Anthropic, OpenAI, Gemini — each via the model REAL
+// cacheReadPricePerM (no guessed multiplier). Unknown usage shape -> UNKNOWN_PRICING.
 
 import type { Model } from "./models";
 import type { RawCall } from "./parseTrace";
@@ -63,6 +62,13 @@ export type ReconstructionResult = {
 // Coerce a raw_usage field to a non-negative finite number; anything else → 0.
 function num(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
+}
+
+// Coerce a raw_usage sub-field to a plain object; arrays/null/primitives -> undefined.
+function asObject(v: unknown): Record<string, unknown> | undefined {
+  return v !== null && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : undefined;
 }
 
 // Detect provider from the raw_usage shape (deliverable §3.4).
@@ -152,6 +158,219 @@ function reconstructAnthropicCall(
   };
 }
 
+export type CallCostBreakdown = {
+  provider: ProviderKind;
+  cost: number;
+  components: ReconstructedComponents;
+  warnings: string[];
+};
+
+/**
+ * Single-call cost reconstruction shared by reconstructCost (Phase 1) and the
+ * replay harness default actualCostFn (Phase 3). Detects provider from the
+ * raw_usage shape and prices EVERY provider at the model's REAL
+ * cacheReadPricePerM (no guessed multiplier). The Anthropic branch mirrors
+ * reconstructAnthropicCall EXACTLY. Unknown shape -> ReconstructError UNKNOWN_PRICING.
+ */
+export function computeCallCost(
+  raw_usage: Record<string, unknown>,
+  model: Model,
+  callFlags?: { is_batch?: boolean; cacheTtlHint?: "5m" | "1h" },
+): CallCostBreakdown {
+  const provider = detectProvider(raw_usage);
+  const isBatch = callFlags?.is_batch === true;
+  const warnings: string[] = [];
+
+  if (provider === "unknown") {
+    throw new ReconstructError(
+      "cannot reconstruct cost: provider unknown (usage shape unrecognized)",
+      "UNKNOWN_PRICING",
+    );
+  }
+
+  if (provider === "anthropic") {
+    // mirrors reconstructAnthropicCall EXACTLY (bit-identical Anthropic numbers).
+    const inputTokens = num(raw_usage.input_tokens);
+    const outputTokens = num(raw_usage.output_tokens);
+    const cacheRead = num(raw_usage.cache_read_input_tokens);
+    const cacheCreate = num(raw_usage.cache_creation_input_tokens);
+    const ttl = callFlags?.cacheTtlHint;
+    const cacheWrite5mTokens = ttl === "1h" ? 0 : cacheCreate;
+    const cacheWrite1hTokens = ttl === "1h" ? cacheCreate : 0;
+    const inputCost = (inputTokens / 1e6) * model.inputPricePerM;
+    const cacheReadCost = (cacheRead / 1e6) * (model.cacheReadPricePerM ?? 0);
+    const cacheWrite5mCost =
+      (cacheWrite5mTokens / 1e6) * (model.cacheWritePricePerM ?? 0);
+    const cacheWrite1hCost =
+      (cacheWrite1hTokens / 1e6) * (2 * model.inputPricePerM);
+    const outputCost = (outputTokens / 1e6) * model.outputPricePerM;
+    const preBatch =
+      inputCost + cacheReadCost + cacheWrite5mCost + cacheWrite1hCost + outputCost;
+    const batchMultiplier = isBatch ? 0.5 : 1;
+    if (isBatch) warnings.push("batch flag set: applied 0.5× batch discount");
+    if (model.supportsCache === false && cacheRead + cacheCreate > 0) {
+      warnings.push(
+        "usage reports cache tokens but model.supportsCache is false — verify pricing",
+      );
+    }
+    return {
+      provider,
+      cost: preBatch * batchMultiplier,
+      components: {
+        inputTokens,
+        outputTokens,
+        cacheReadTokens: cacheRead,
+        cacheWrite5mTokens,
+        cacheWrite1hTokens,
+        reasoningTokens: 0,
+        inputCost,
+        cacheReadCost,
+        cacheWrite5mCost,
+        cacheWrite1hCost,
+        outputCost,
+        batchMultiplier,
+      },
+      warnings,
+    };
+  }
+
+  if (provider === "openai") {
+    // completion_tokens ALREADY includes reasoning_tokens — surface for
+    // transparency, do NOT add to cost (no double-count). Cached tokens live
+    // under prompt_tokens_details.cached_tokens.
+    const promptTokens = num(raw_usage.prompt_tokens);
+    const completionTokens = num(raw_usage.completion_tokens);
+    const cachedTokens = num(
+      asObject(raw_usage.prompt_tokens_details)?.cached_tokens,
+    );
+    const reasoningTokens = num(
+      asObject(raw_usage.completion_tokens_details)?.reasoning_tokens,
+    );
+    const nonCachedInput = Math.max(0, promptTokens - cachedTokens);
+    const inputCost = (nonCachedInput / 1e6) * model.inputPricePerM;
+    const cacheReadCost = (cachedTokens / 1e6) * (model.cacheReadPricePerM ?? 0);
+    const outputCost = (completionTokens / 1e6) * model.outputPricePerM;
+    const preBatch = inputCost + cacheReadCost + outputCost;
+    const batchMultiplier = isBatch ? 0.5 : 1; // OpenAI Batch IS 50% off
+    if (isBatch) warnings.push("batch flag set: applied 0.5× batch discount");
+    if (model.supportsCache === false && cachedTokens > 0) {
+      warnings.push(
+        "usage reports cache tokens but model.supportsCache is false — verify pricing",
+      );
+    }
+    return {
+      provider,
+      cost: preBatch * batchMultiplier,
+      components: {
+        inputTokens: nonCachedInput,
+        outputTokens: completionTokens,
+        cacheReadTokens: cachedTokens,
+        cacheWrite5mTokens: 0,
+        cacheWrite1hTokens: 0,
+        reasoningTokens,
+        inputCost,
+        cacheReadCost,
+        cacheWrite5mCost: 0,
+        cacheWrite1hCost: 0,
+        outputCost,
+        batchMultiplier,
+      },
+      warnings,
+    };
+  }
+
+  // provider === "gemini": counts live under usage_metadata (fall back to a flat
+  // raw_usage). thoughts_token_count is SEPARATE from candidates, billed at the
+  // OUTPUT rate — ADD them. Gemini has NO 50% batch discount.
+  const um = asObject(raw_usage.usage_metadata) ?? raw_usage;
+  const promptTokens = num(um.prompt_token_count);
+  const candidatesTokens = num(um.candidates_token_count);
+  const cachedTokens = num(um.cached_content_token_count);
+  const thoughtsTokens = num(um.thoughts_token_count);
+  const nonCachedInput = Math.max(0, promptTokens - cachedTokens);
+  const inputCost = (nonCachedInput / 1e6) * model.inputPricePerM;
+  const cacheReadCost = (cachedTokens / 1e6) * (model.cacheReadPricePerM ?? 0);
+  const outputTokens = candidatesTokens + thoughtsTokens;
+  const outputCost = (outputTokens / 1e6) * model.outputPricePerM;
+  const preBatch = inputCost + cacheReadCost + outputCost;
+  const batchMultiplier = 1; // Gemini has NO batch discount
+  if (isBatch) {
+    warnings.push(
+      "is_batch set but Gemini has no batch discount — multiplier stays 1×",
+    );
+  }
+  if (model.supportsCache === false && cachedTokens > 0) {
+    warnings.push(
+      "usage reports cache tokens but model.supportsCache is false — verify pricing",
+    );
+  }
+  return {
+    provider,
+    cost: preBatch * batchMultiplier,
+    components: {
+      inputTokens: nonCachedInput,
+      outputTokens,
+      cacheReadTokens: cachedTokens,
+      cacheWrite5mTokens: 0,
+      cacheWrite1hTokens: 0,
+      reasoningTokens: thoughtsTokens,
+      inputCost,
+      cacheReadCost,
+      cacheWrite5mCost: 0,
+      cacheWrite1hCost: 0,
+      outputCost,
+      batchMultiplier,
+    },
+    warnings,
+  };
+}
+
+function reconstructOpenAICall(
+  raw: RawCall,
+  model: Model,
+  billed: number | null,
+): ReconstructedCall {
+  const { cost, components, warnings } = computeCallCost(raw.raw_usage, model, {
+    is_batch: raw.call_flags.is_batch,
+    cacheTtlHint: raw.call_flags.cacheTtlHint,
+  });
+  const errorPct =
+    billed === null || billed === undefined
+      ? null
+      : Math.abs(cost - billed) / billed;
+  return {
+    provider: "openai",
+    computedCost: cost,
+    billedCost: billed,
+    errorPct,
+    components,
+    warnings,
+  };
+}
+
+function reconstructGeminiCall(
+  raw: RawCall,
+  model: Model,
+  billed: number | null,
+): ReconstructedCall {
+  const { cost, components, warnings } = computeCallCost(raw.raw_usage, model, {
+    is_batch: raw.call_flags.is_batch,
+    cacheTtlHint: raw.call_flags.cacheTtlHint,
+  });
+  const errorPct =
+    billed === null || billed === undefined
+      ? null
+      : Math.abs(cost - billed) / billed;
+  return {
+    provider: "gemini",
+    computedCost: cost,
+    billedCost: billed,
+    errorPct,
+    components,
+    warnings,
+  };
+}
+
 export function reconstructCost(
   input: ReconstructionInput,
 ): ReconstructionResult {
@@ -164,9 +383,15 @@ export function reconstructCost(
     if (provider === "anthropic") {
       return reconstructAnthropicCall(raw, input.model, billed);
     }
+    if (provider === "openai") {
+      return reconstructOpenAICall(raw, input.model, billed);
+    }
+    if (provider === "gemini") {
+      return reconstructGeminiCall(raw, input.model, billed);
+    }
     throw new ReconstructError(
-      `Call ${i + 1}: provider '${provider}' reconstruction not implemented — parseTrace does not yet ingest this format and we do not guess its cache rates`,
-      "UNSUPPORTED_PROVIDER",
+      `Call ${i + 1}: provider '${provider}' reconstruction not implemented (usage shape unrecognized)`,
+      "UNKNOWN_PRICING",
     );
   });
 

@@ -21,12 +21,12 @@ import { describe, it, expect } from "vitest";
 import {
   buildReplayPlan,
   evaluateReplay,
-  anthropicActualCost,
   median,
   p95,
   ReplayError,
   type ActualCostFn,
 } from "../replayHarness";
+import { computeCallCost } from "../reconstructCost";
 import { MODELS } from "../models";
 import type { RawCall } from "../parseTrace";
 
@@ -163,7 +163,7 @@ describe("evaluateReplay — DEGRADE fail (actual input_tokens = round(real*1.20
 });
 
 describe("evaluateReplay — Anthropic default actualCost (sonnet, no fn)", () => {
-  it("pairs[0].actualCost === hand-computed anthropicActualCost; method approx", () => {
+  it("pairs[0].actualCost === hand-computed anthropic default cost (computeCallCost); method approx", () => {
     const plan = buildReplayPlan(twoPromptCalls(), sonnet46);
     const actuals = [
       { usage: { input_tokens: 1000, output_tokens: 6 } },
@@ -172,12 +172,13 @@ describe("evaluateReplay — Anthropic default actualCost (sonnet, no fn)", () =
 
     const evaluation = evaluateReplay(plan, actuals, sonnet46);
 
-    // Hand-computed anthropicActualCost (no cache, no batch):
+    // Hand-computed actual cost via computeCallCost (anthropic, no cache, no batch):
     //   1000/1e6 * 3.0 + 6/1e6 * 15.0 = 0.003 + 0.00009 = 0.00309 [V]
     expect(evaluation.pairs[0].actualCost).toBeCloseTo(0.00309, 10);
-    // Cross-check against the exported helper directly.
+    // Default now delegates to computeCallCost (de-dup; anthropicActualCost removed).
+    // The anthropic branch mirrors reconstructAnthropicCall, so no-cache/no-batch is bit-identical.
     expect(evaluation.pairs[0].actualCost).toBe(
-      anthropicActualCost({ input_tokens: 1000, output_tokens: 6 }, sonnet46),
+      computeCallCost({ input_tokens: 1000, output_tokens: 6 }, sonnet46).cost,
     );
     // Sonnet has no client-side tokenizer -> approx.
     expect(evaluation.method).toBe("approx");
@@ -186,19 +187,37 @@ describe("evaluateReplay — Anthropic default actualCost (sonnet, no fn)", () =
 });
 
 describe("evaluateReplay — error paths", () => {
-  it("throws ReplayError UNSUPPORTED_PROVIDER for gpt-5.5 target without actualCostFn", () => {
+  it("SUCCEEDS for a gpt-5.5 target with NO actualCostFn (default delegates to computeCallCost)", () => {
     const plan = buildReplayPlan(twoPromptCalls(), gpt55);
     const actuals = [
       { usage: { prompt_tokens: 9, completion_tokens: 16 } },
       { usage: { prompt_tokens: 9, completion_tokens: 16 } },
     ];
-    try {
-      evaluateReplay(plan, actuals, gpt55);
-      throw new Error("expected evaluateReplay to throw");
-    } catch (e) {
-      expect(e).toBeInstanceOf(ReplayError);
-      expect((e as ReplayError).code).toBe("UNSUPPORTED_PROVIDER");
-    }
+    // No throw: default actualCost now delegates to computeCallCost (OpenAI branch).
+    const evaluation = evaluateReplay(plan, actuals, gpt55);
+    // Real actualCost: 9/1e6*5.0 + 16/1e6*30.0 = 0.000045 + 0.00048 = 0.000525 [V]
+    expect(evaluation.pairs[0].actualCost).toBeCloseTo(0.000525, 10);
+    expect(evaluation.pairs[0].actualCost).toBe(
+      computeCallCost({ prompt_tokens: 9, completion_tokens: 16 }, gpt55).cost,
+    );
+  });
+
+  it("SUCCEEDS for a gemini-3.1-pro target with NO actualCostFn (default delegates to computeCallCost)", () => {
+    const gemini31pro = MODELS.find((m) => m.id === "gemini-3.1-pro")!;
+    const plan = buildReplayPlan(twoPromptCalls(), gemini31pro);
+    const actuals = [
+      { usage: { usage_metadata: { prompt_token_count: 9, candidates_token_count: 16, thoughts_token_count: 0 } } },
+      { usage: { usage_metadata: { prompt_token_count: 9, candidates_token_count: 16, thoughts_token_count: 0 } } },
+    ];
+    const evaluation = evaluateReplay(plan, actuals, gemini31pro);
+    // Real actualCost: 9/1e6*2.0 + 16/1e6*12.0 = 0.000018 + 0.000192 = 0.00021 [V]
+    expect(evaluation.pairs[0].actualCost).toBeCloseTo(0.00021, 10);
+    expect(evaluation.pairs[0].actualCost).toBe(
+      computeCallCost(
+        { usage_metadata: { prompt_token_count: 9, candidates_token_count: 16, thoughts_token_count: 0 } },
+        gemini31pro,
+      ).cost,
+    );
   });
 
   it("throws ReplayError LENGTH_MISMATCH when actuals.length !== items.length", () => {

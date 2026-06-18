@@ -109,3 +109,39 @@ This increment deliberately leaves open (linked to the AUDIT doc's P0–P3 list)
 - [x] `npm run build` succeeds
 - [x] Additive only — no existing path's behaviour changed
 - [x] Nothing committed (build-plan constraint)
+
+## 8. OpenAI + Gemini support (increment c1)
+
+`computeCallCost(raw_usage, model, callFlags?)` is the shared single-call cost
+reconstructor used by both Phase 1 (`reconstructCost`) and Phase 3 (the replay
+harness default `actualCostFn`). It detects the provider from the `raw_usage`
+shape and prices **every** provider at the model's **REAL** `cacheReadPricePerM`
+— no guessed cache multiplier (deliverable §3.4).
+
+- **OpenAI** — `prompt_tokens` / `completion_tokens` / `prompt_tokens_details.cached_tokens`
+  / `completion_tokens_details.reasoning_tokens`. `completion_tokens` **already
+  includes** reasoning tokens, so reasoning is surfaced for transparency but
+  **NOT** added to cost (no double-count). Non-cached input = `prompt_tokens −
+  cached_tokens`. OpenAI **Batch is 50% off** (`batchMultiplier = 0.5` when
+  `is_batch`). Cache write is N/A (no cache-creation field) → 0.
+- **Gemini** — counts under `usage_metadata`: `prompt_token_count`,
+  `candidates_token_count`, `cached_content_token_count`, `thoughts_token_count`.
+  `thoughts_token_count` is **separate** from candidates and billed at the
+  **output** rate — they are **added**. Gemini has **NO 50% batch discount**
+  (`batchMultiplier = 1` always; `is_batch` only emits a warning).
+- **Anthropic** — unchanged; the `computeCallCost` anthropic branch mirrors
+  `reconstructAnthropicCall` exactly (bit-identical numbers; it is NOT delegated,
+  to guarantee the existing Anthropic reconstruction is untouched).
+- **Unknown shape** → throws `ReconstructError` code `UNKNOWN_PRICING`.
+
+Phase 3 `replayHarness.evaluateReplay` default `actualCostFn` now delegates to
+`computeCallCost` (de-dup vs the prior inlined `anthropicActualCost`, which was
+removed). A pluggable `actualCostFn` still overrides per-pair. The
+`UNSUPPORTED_PROVIDER` throw for non-Anthropic targets is gone — all providers
+resolve by default.
+
+**Definition of done for c1:** `tsc`/`test`/`build` green; existing Anthropic
+reconstruction numbers unchanged; `parseTrace` ingestion of OpenAI/Gemini traces
+is deferred to increment c2 (this rep touches `reconstructCost` +
+`replayHarness` only). Honest caveat: a billed total within ±5% still requires a
+real invoice to compare against.

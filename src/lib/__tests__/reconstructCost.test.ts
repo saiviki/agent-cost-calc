@@ -1,7 +1,7 @@
 // Phase 1 reconstruction harness tests. Implements docs/SPEC-phase1-reconstruction.md §4.
-// All values are hand-computed and asserted to 6 decimal places. The test Model
-// is hard-coded (Claude Sonnet 4.6 prices) so the suite is price-stable across
-// MODELS edits (house style: SPEC-effective-cost.md §5).
+// All values are hand-computed and asserted to 6 decimal places. The test Models
+// are hard-coded (Sonnet 4.6, GPT-5.5, Gemini 3.1 Pro prices) so the suite is
+// price-stable across MODELS edits (house style: SPEC-effective-cost.md §5).
 import { describe, it, expect } from "vitest";
 import { reconstructCost, ReconstructError } from "../reconstructCost";
 import type { RawCall } from "../parseTrace";
@@ -22,6 +22,38 @@ const sonnetModel: Model = {
   cacheWritePricePerM: 3.75,
   supportsCache: true,
   outputMultiplier: 1.0,
+};
+
+// Hard-coded GPT-5.5 test model (OpenAI; REAL prices mirrored from MODELS) [V].
+const gpt55Model: Model = {
+  id: "gpt-5.5",
+  name: "GPT-5.5",
+  provider: "OpenAI",
+  isOpen: false,
+  tier: "frontier",
+  strengths: ["reasoning"],
+  contextK: 1050,
+  inputPricePerM: 5.0,
+  outputPricePerM: 30.0,
+  cacheReadPricePerM: 0.5,
+  supportsCache: true,
+  outputMultiplier: 5.4,
+};
+
+// Hard-coded Gemini 3.1 Pro test model (Google; REAL prices mirrored from MODELS) [V].
+const geminiModel: Model = {
+  id: "gemini-3.1-pro",
+  name: "Gemini 3.1 Pro",
+  provider: "Google",
+  isOpen: false,
+  tier: "frontier",
+  strengths: ["multimodal", "long-context", "reasoning"],
+  contextK: 1048,
+  inputPricePerM: 2.0,
+  outputPricePerM: 12.0,
+  cacheReadPricePerM: 0.2,
+  supportsCache: true,
+  outputMultiplier: 4.1,
 };
 
 describe("reconstructCost — Anthropic rates", () => {
@@ -106,6 +138,101 @@ describe("reconstructCost — Anthropic rates", () => {
   });
 });
 
+describe("reconstructCost — OpenAI rates (gpt-5.5)", () => {
+  // Case O1 — non-cached input + cached read + output. completion_tokens already
+  // includes reasoning (800) — surfaced, NOT added to cost.
+  // input 4000/1e6*5.0=0.020 + cacheRead 6000/1e6*0.50=0.003 + output 2000/1e6*30.0=0.060 = 0.083
+  it("computes an OpenAI gpt-5.5 call without double-counting reasoning", () => {
+    const rawCall: RawCall = {
+      raw_usage: {
+        prompt_tokens: 10000,
+        completion_tokens: 2000,
+        prompt_tokens_details: { cached_tokens: 6000 },
+        completion_tokens_details: { reasoning_tokens: 800 },
+      },
+      call_flags: { provider: "openai" },
+    };
+    const result = reconstructCost({ rawCalls: [rawCall], model: gpt55Model });
+    const c = result.perCall[0];
+    expect(c.provider).toBe("openai");
+    expect(c.components.inputCost).toBeCloseTo(0.02, 6);
+    expect(c.components.cacheReadCost).toBeCloseTo(0.003, 6);
+    expect(c.components.outputCost).toBeCloseTo(0.06, 6);
+    expect(c.components.reasoningTokens).toBe(800);
+    expect(c.components.cacheWrite5mTokens).toBe(0);
+    expect(c.components.batchMultiplier).toBe(1);
+    expect(c.computedCost).toBeCloseTo(0.083, 6);
+    expect(c.errorPct).toBeNull();
+  });
+
+  // Case O2 — batch: 0.083 * 0.5 = 0.0415; OpenAI Batch IS 50% off.
+  it("applies the 0.5× batch discount for OpenAI (is_batch true)", () => {
+    const rawCall: RawCall = {
+      raw_usage: {
+        prompt_tokens: 10000,
+        completion_tokens: 2000,
+        prompt_tokens_details: { cached_tokens: 6000 },
+        completion_tokens_details: { reasoning_tokens: 800 },
+      },
+      call_flags: { provider: "openai", is_batch: true },
+    };
+    const result = reconstructCost({ rawCalls: [rawCall], model: gpt55Model });
+    const c = result.perCall[0];
+    expect(c.components.batchMultiplier).toBe(0.5);
+    expect(c.computedCost).toBeCloseTo(0.0415, 6);
+    expect(c.warnings.some((w) => w.includes("batch"))).toBe(true);
+  });
+});
+
+describe("reconstructCost — Gemini rates (gemini-3.1-pro)", () => {
+  // Case G1 — usage_metadata; thoughts (700) are SEPARATE from candidates (1500),
+  // both billed at the output rate -> output tokens 2200.
+  // input 5000/1e6*2.0=0.010 + cacheRead 5000/1e6*0.20=0.001 + output 2200/1e6*12.0=0.0264 = 0.0374
+  it("computes a Gemini call adding thoughts at the output rate", () => {
+    const rawCall: RawCall = {
+      raw_usage: {
+        usage_metadata: {
+          prompt_token_count: 10000,
+          candidates_token_count: 1500,
+          cached_content_token_count: 5000,
+          thoughts_token_count: 700,
+        },
+      },
+      call_flags: { provider: "gemini" },
+    };
+    const result = reconstructCost({ rawCalls: [rawCall], model: geminiModel });
+    const c = result.perCall[0];
+    expect(c.provider).toBe("gemini");
+    expect(c.components.inputCost).toBeCloseTo(0.01, 6);
+    expect(c.components.cacheReadCost).toBeCloseTo(0.001, 6);
+    expect(c.components.outputCost).toBeCloseTo(0.0264, 6);
+    expect(c.components.reasoningTokens).toBe(700);
+    expect(c.components.cacheWrite5mTokens).toBe(0);
+    expect(c.components.batchMultiplier).toBe(1);
+    expect(c.computedCost).toBeCloseTo(0.0374, 6);
+  });
+
+  // Case G2 — Gemini has NO batch discount: is_batch true -> multiplier stays 1, warns.
+  it("does NOT apply a batch discount for Gemini (is_batch true -> stays 1, warns)", () => {
+    const rawCall: RawCall = {
+      raw_usage: {
+        usage_metadata: {
+          prompt_token_count: 10000,
+          candidates_token_count: 1500,
+          cached_content_token_count: 5000,
+          thoughts_token_count: 700,
+        },
+      },
+      call_flags: { provider: "gemini", is_batch: true },
+    };
+    const result = reconstructCost({ rawCalls: [rawCall], model: geminiModel });
+    const c = result.perCall[0];
+    expect(c.components.batchMultiplier).toBe(1);
+    expect(c.computedCost).toBeCloseTo(0.0374, 6);
+    expect(c.warnings.some((w) => w.includes("batch"))).toBe(true);
+  });
+});
+
 describe("reconstructCost — totals, error %, and the Phase 1 gate", () => {
   // Two identical cache calls, each 0.01815 → totalComputed 0.0363.
   const makeCacheCall = (): RawCall => ({
@@ -173,10 +300,12 @@ describe("reconstructCost — totals, error %, and the Phase 1 gate", () => {
 });
 
 describe("reconstructCost — provider detection and errors", () => {
-  // Case 6 — OpenAI raw_usage shape → detected, throws UNSUPPORTED_PROVIDER (do not guess).
-  it("throws UNSUPPORTED_PROVIDER for a non-Anthropic raw_usage shape", () => {
+  // Case 6 — unrecognized raw_usage shape -> UNKNOWN_PRICING. (OpenAI/Gemini shapes
+  // are now RECONSTRUCTED; only a truly unknown shape throws. Detection is from the
+  // raw_usage shape, so call_flags.provider is irrelevant here.)
+  it("throws UNKNOWN_PRICING for an unrecognized raw_usage shape", () => {
     const rawCall: RawCall = {
-      raw_usage: { prompt_tokens: 100 },
+      raw_usage: { foo: 1 },
       call_flags: { provider: "anthropic" }, // call_flags.provider is best-effort; detection is from raw_usage shape
     };
     let err: unknown = null;
@@ -186,7 +315,7 @@ describe("reconstructCost — provider detection and errors", () => {
       err = e;
     }
     expect(err).toBeInstanceOf(ReconstructError);
-    expect((err as ReconstructError).code).toBe("UNSUPPORTED_PROVIDER");
+    expect((err as ReconstructError).code).toBe("UNKNOWN_PRICING");
   });
 
   // Case 7 — missing raw_usage → throws NO_RAW_USAGE.

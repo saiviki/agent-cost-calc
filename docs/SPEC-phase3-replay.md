@@ -59,9 +59,9 @@ export function evaluateReplay(plan, actuals, target, actualCostFn?) : ReplayEva
 
 **Counterfactual side (`cost_B'`).** Re-tokenizes the captured text with B's tokenizer via `countTokens` (exact OpenAI o200k/cl100k, **approx** char-ratio Anthropic/Gemini — see SPEC-phase2 §2), priced at B's list rates, **no-cache default** (methodology §3.1). Never reads `model.outputMultiplier` — `countTokens` is the only cross-model bridge.
 
-**Actual side (`cost_B`).** Uses `actualCostFn`. **Anthropic default** (`anthropicActualCost`, inlined locally — mirrors `reconstructCost`'s Anthropic math: input + cache_read + cache_creation + output, no batch, no 1h split since B's real usage does not echo the TTL). **OpenAI/Gemini actual-cost is deferred to increment (c)**, reached via the pluggable `actualCostFn` (P7). A non-Anthropic target + the default actualCostFn ⇒ `ReplayError(UNSUPPORTED_PROVIDER)` (same posture as `reconstructCost`).
+**Actual side (`cost_B`).** The default `actualCostFn` delegates to `computeCallCost` (`reconstructCost`), so all providers resolve at the model's REAL `cacheReadPricePerM` — Anthropic, OpenAI, Gemini (increment c1). The prior inlined `anthropicActualCost` was removed (de-dup). A pluggable `actualCostFn` still overrides per-pair (P7). Unknown usage shape ⇒ `ReconstructError(UNKNOWN_PRICING)` thrown by `computeCallCost`.
 
-**Usage field extraction is provider-shape-tolerant:** `actInput` reads `input_tokens` (Anthropic) else `prompt_tokens` (OpenAI) else 0; `actOutput` reads `output_tokens` else `completion_tokens` else 0.
+**Usage field extraction is provider-shape-tolerant** via `actualTokenCounts`: Anthropic (`input_tokens`/`output_tokens`), OpenAI (`prompt_tokens`/`completion_tokens`), Gemini (`prompt_token_count` / `candidates_token_count + thoughts_token_count`); unknown shape ⇒ {0,0}.
 
 **Errors:**
 
