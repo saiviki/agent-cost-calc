@@ -349,6 +349,109 @@ describe("rawCalls capture (Phase 1 ground truth)", () => {
     expect(result.rawCalls![0].call_flags.provider).toBe("anthropic");
     expect(result.rawCalls![0].raw_usage.input_tokens).toBe(500);
   });
+
+  // Phase 2 — prompt-text capture from .jsonl (docs/SPEC-phase2-retokenization.md §4).
+  // ADDITIVE: existing assertions untouched.
+  it("captures promptText from a preceding human text turn in .jsonl", () => {
+    const lines = [
+      JSON.stringify({
+        type: "human",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Refactor the auth module" }],
+        },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4-6",
+          content: [{ type: "text", text: "on it" }],
+          usage: {
+            input_tokens: 120,
+            output_tokens: 12,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          },
+        },
+      }),
+    ];
+    const input = lines.join("\n");
+
+    const result = parseTrace(input);
+
+    expect(result.rawCalls).toHaveLength(1);
+    expect(result.rawCalls![0].full_text_content!.promptText).toContain(
+      "Refactor the auth module",
+    );
+    // completionText is still captured from the assistant text block (unchanged).
+    expect(result.rawCalls![0].full_text_content!.completionText).toBe("on it");
+  });
+
+  // Phase 2 regression guard: promptText must ACCUMULATE across turns (no reset).
+  // Under the prior RESET bug, rawCalls[1].promptText would contain ONLY the
+  // second user turn (a per-turn delta). Accumulate semantics -> turn 2 sees BOTH.
+  it("accumulates promptText across multiple turns in .jsonl", () => {
+    const lines = [
+      JSON.stringify({
+        type: "human",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "FIRST user turn" }],
+        },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4-6",
+          content: [{ type: "text", text: "reply one" }],
+          usage: {
+            input_tokens: 120,
+            output_tokens: 12,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "human",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "SECOND user turn" }],
+        },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4-6",
+          content: [{ type: "text", text: "reply two" }],
+          usage: {
+            input_tokens: 240,
+            output_tokens: 24,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          },
+        },
+      }),
+    ];
+    const input = lines.join("\n");
+
+    const result = parseTrace(input);
+
+    expect(result.rawCalls).toHaveLength(2);
+    expect(result.rawCalls![0].full_text_content!.promptText).toContain(
+      "FIRST user turn",
+    );
+    // Key regression assertion: turn 2 sees BOTH turns (accumulate), not just the delta.
+    expect(result.rawCalls![1].full_text_content!.promptText).toContain(
+      "FIRST user turn",
+    );
+    expect(result.rawCalls![1].full_text_content!.promptText).toContain(
+      "SECOND user turn",
+    );
+  });
 });
 
 // Accuracy harness. Split into two tiers (docs/SPEC-phase1-reconstruction.md §4):

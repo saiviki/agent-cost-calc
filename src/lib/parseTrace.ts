@@ -321,6 +321,16 @@ function extractTextFromContent(content: unknown): string {
   return out;
 }
 
+// Phase 2 — prompt-side text capture (docs/RESEARCH-validation-methodology.md §4.3,
+// docs/SPEC-phase2-retokenization.md §4). Mirrors extractTextFromContent for the
+// input side. Superset: also accepts a plain string (real Claude Code .jsonl
+// human turns often carry content as a string, not a block array) so input-side
+// re-tokenization works on real traces. Pure: pushes NO warnings.
+function extractPromptTextFromContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  return extractTextFromContent(content);
+}
+
 // True if any block.type is an image/file variant. Non-array → false.
 function contentHasMultimodal(content: unknown): boolean {
   if (!Array.isArray(content)) return false;
@@ -511,6 +521,8 @@ function parseAnthropicJson(parsed: unknown, warnings: string[]): ParsedRun {
 
 function parseJsonl(trimmed: string, warnings: string[]): ParsedRun {
   const lines = trimmed.split("\n");
+  // Phase 2 — rolling buffer of user/system text seen before each assistant turn.
+  let promptTextBuffer = "";
 
   const parsedLines: unknown[] = [];
   let anyLineParsed = false;
@@ -552,7 +564,18 @@ function parseJsonl(trimmed: string, warnings: string[]): ParsedRun {
     if (obj.type !== "assistant") {
       // C1 — non-assistant turns (human/user/result): scan only for repair
       // signals from tool_result blocks (§3). Token counting still skips them.
-      if (message) accumulateSignals(message.content, signalAcc, false);
+      if (message) {
+        accumulateSignals(message.content, signalAcc, false);
+        // Phase 2 — accumulate user/system text preceding the next assistant
+        // turn as promptText (docs/SPEC-phase2-retokenization.md §4).
+        const piece = extractPromptTextFromContent(message.content);
+        if (piece.length > 0) {
+          promptTextBuffer =
+            promptTextBuffer.length === 0
+              ? piece
+              : `${promptTextBuffer}\n${piece}`;
+        }
+      }
       return;
     }
 
@@ -573,7 +596,20 @@ function parseJsonl(trimmed: string, warnings: string[]): ParsedRun {
     // C1 — accumulate assistant-turn signals (tool_use, text, thinking).
     accumulateSignals(message?.content, signalAcc, true);
     runsData.push(run);
-    rawCalls.push(extractRawCall(message, usage, message?.content));
+    // Phase 2 — snapshot accumulated user/system text as this call's promptText.
+    // We ACCUMULATE across turns (no reset): promptText = all user-text seen
+    // BEFORE this turn. This is a LOWER BOUND on raw_usage.input_tokens, which
+    // also includes the system prompt, prior ASSISTANT turns, and tool_result
+    // blocks — none of which we capture here (out of scope for this increment).
+    // Accumulating (not resetting) keeps promptDiffPct growing with the real
+    // context size instead of collapsing to a per-turn delta; the residual
+    // undercount is documented in docs/SPEC-phase2-retokenization.md §4.
+    // parseAnthropicJson is unchanged: its RawCalls keep promptText "".
+    const rawCall = extractRawCall(message, usage, message?.content);
+    if (rawCall.full_text_content) {
+      rawCall.full_text_content.promptText = promptTextBuffer;
+    }
+    rawCalls.push(rawCall);
   });
 
   // Detected as .jsonl but zero qualifying assistant turns → NO_ASSISTANT_TURNS.
