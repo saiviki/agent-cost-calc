@@ -23,6 +23,7 @@ import {
   cacheRateInsight,
 } from "@/lib/counterfactual";
 import { reconstructCost } from "@/lib/reconstructCost";
+import { projectRetokenized, type RetokenizedCostRow } from "@/lib/retokenizedCost";
 import {
   classifyTask,
   type Classification,
@@ -190,7 +191,7 @@ function TracePanel({
   // Set only after a successful profile — drives the reveal + counterfactual.
   const [parsed, setParsed] = useState<ParsedRun | null>(null);
   const [profiledConfig, setProfiledConfig] = useState<AgentConfig | null>(null);
-  const [costMode, setCostMode] = useState<"effective" | "nominal">("effective");
+  const [costMode, setCostMode] = useState<"effective" | "nominal" | "retokenized">("effective");
   // C5 — Task DNA override. null = use the auto-detected classifier verdict.
   const [typeOverride, setTypeOverride] = useState<TaskType | null>(null);
   const [complexityOverride, setComplexityOverride] =
@@ -323,6 +324,12 @@ function TracePanel({
     ? `Effective cost normalizes output tokens by each model's verbosity multiplier (baseline Claude Sonnet 4.6 = 1.0). Anchor ${anchorModel.name}: ${anchorModel.outputMultiplier}× · source: ${anchorModel.multiplierSource ?? "n/a"} · confidence: ${anchorModel.multiplierConfidence ?? "low"}.`
     : "Effective cost normalizes output tokens by each model's verbosity multiplier.";
 
+  // Phase 2 — explains the retokenized counterfactual (distinct number kind from
+  // the effective-cost multiplierTooltip above: re-tokenizes the SAME captured
+  // text, no cache/batch, exact OpenAI / approx Claude-Gemini).
+  const retokenizedTooltip =
+    "Retokenized = re-tokenizes the CAPTURED output text under each model's tokenizer and prices it at list rates (no cache/batch). Exact for OpenAI (gpt-tokenizer), approx for Claude/Gemini (no official client-side tokenizer). Models the tokenizer effect on the SAME text — NOT model verbosity (Phase 3 replay).";
+
   // Phase 1 ground-truth reconstruction: cost of the captured run on its ORIGINAL
   // model, derived from provider raw_usage as billed (exact cache/batch rates,
   // no verbosity estimate). Distinct from the heuristic projection below.
@@ -337,6 +344,20 @@ function TracePanel({
       return null;
     }
   }, [parsed, anchorModel]);
+
+  // Phase 2 cost layer (docs/RESEARCH-validation-methodology.md §4.3, §3.2).
+  // Cost of the captured run re-tokenized under each model's tokenizer, priced
+  // at list rates (NO cache, NO batch — counterfactual default). Exact for
+  // OpenAI (gpt-tokenizer), approx for Claude/Gemini. Never reads
+  // model.outputMultiplier. Defensive try/catch so a bad trace never crashes.
+  const retokenizedRows = useMemo<RetokenizedCostRow[] | null>(() => {
+    if (!parsed?.rawCalls?.length) return null;
+    try {
+      return projectRetokenized(parsed.rawCalls);
+    } catch {
+      return null;
+    }
+  }, [parsed]);
 
   return (
     <section className="border border-stone-200 rounded-xl bg-white overflow-hidden">
@@ -525,7 +546,7 @@ function TracePanel({
                   <button
                     type="button"
                     onClick={() => setCostMode("nominal")}
-                    className={`px-2 py-1 rounded-r-md border -ml-px transition-colors ${
+                    className={`px-2 py-1 border -ml-px transition-colors ${
                       costMode === "nominal"
                         ? "bg-stone-800 text-white border-stone-800"
                         : "bg-white text-stone-500 border-stone-200 hover:text-stone-700"
@@ -533,12 +554,31 @@ function TracePanel({
                   >
                     Nominal
                   </button>
-                  <span className="ml-1 text-stone-300 cursor-help" title={multiplierTooltip}>
+                  <button
+                    type="button"
+                    onClick={() => setCostMode("retokenized")}
+                    disabled={retokenizedRows === null}
+                    title={
+                      retokenizedRows === null
+                        ? "Re-tokenize unavailable (no captured trace)."
+                        : retokenizedTooltip
+                    }
+                    className={`px-2 py-1 rounded-r-md border -ml-px transition-colors ${
+                      costMode === "retokenized"
+                        ? "bg-stone-800 text-white border-stone-800"
+                        : "bg-white text-stone-500 border-stone-200 hover:text-stone-700"
+                    }${retokenizedRows === null ? " opacity-40 cursor-not-allowed" : ""}`}
+                  >
+                    Retokenized
+                  </button>
+                  <span className="ml-1 text-stone-300 cursor-help" title={costMode === "retokenized" ? retokenizedTooltip : multiplierTooltip}>
                     ⓘ
                   </span>
                 </div>
               </div>
 
+              {costMode !== "retokenized" && (
+                <>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -629,6 +669,86 @@ function TracePanel({
                   ? "Effective = output tokens normalized by each model's verbosity multiplier, then priced. Reasoning models emit more tokens per task."
                   : "Nominal = raw list price at identical output tokens. Ignores that verbose/reasoning models emit more tokens per task."}
               </p>
+                </>
+              )}
+
+              {costMode === "retokenized" && retokenizedRows && (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-stone-400 border-b border-stone-100">
+                          <th className="font-medium py-1.5 pr-2">Model</th>
+                          <th className="font-medium py-1.5 px-2 text-right">
+                            Target out tok
+                          </th>
+                          <th className="font-medium py-1.5 px-2 text-right">
+                            $/run
+                          </th>
+                          <th className="font-medium py-1.5 pl-2 text-right">
+                            Method
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {retokenizedRows.map((r) => (
+                          <tr
+                            key={r.model.id}
+                            className={`border-b border-stone-50 ${
+                              r.model.id === profiledConfig?.modelId
+                                ? "bg-stone-100"
+                                : ""
+                            }`}
+                          >
+                            <td className="py-1.5 pr-2">
+                              <span
+                                className={
+                                  r.model.id === profiledConfig?.modelId
+                                    ? "font-semibold text-stone-900"
+                                    : "text-stone-600"
+                                }
+                              >
+                                {r.model.name}
+                              </span>
+                              {r.model.id === profiledConfig?.modelId && (
+                                <span className="ml-1.5 text-[9px] uppercase tracking-wider text-stone-500 border border-stone-300 rounded px-1 py-0.5">
+                                  your run
+                                </span>
+                              )}
+                              {r.model.isOpen && (
+                                <span className="ml-1 text-[9px] uppercase tracking-wider text-stone-400">
+                                  open
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2 text-right font-mono text-stone-500">
+                              {r.targetOutputTokens.toLocaleString()}
+                            </td>
+                            <td className="py-1.5 px-2 text-right font-mono text-stone-700">
+                              {formatCost(r.perRunCost)}
+                            </td>
+                            <td className="py-1.5 pl-2 text-right">
+                              <span
+                                title={r.notes.join(" ")}
+                                className={
+                                  r.isExact
+                                    ? "text-emerald-600 font-mono"
+                                    : "text-amber-600 font-mono"
+                                }
+                              >
+                                {r.method}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-[11px] text-stone-400 leading-relaxed">
+                    Retokenized = the captured run&rsquo;s output text, re-tokenized under each model&rsquo;s tokenizer, priced at list rates (no cache, no batch). Exact for OpenAI; approx for Claude/Gemini. This isolates the tokenizer effect — it does NOT model a different model emitting more/fewer tokens (that is Phase 3 replay).
+                  </p>
+                </>
+              )}
             </div>
           )}
 

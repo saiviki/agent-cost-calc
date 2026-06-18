@@ -99,3 +99,53 @@ This module **does not compute cost** (that stays in `reconstructCost` — Phase
 - Strictly additive: no existing path's behaviour changed; `retokenize.ts` does not read `outputMultiplier`.
 - `gpt-tokenizer` added to `package.json` dependencies (the only new dependency).
 - Nothing committed — the Phase 2 diff is left uncommitted for review.
+
+## 8. Cost layer + UI (increment a)
+
+`projectRetokenized(rawCalls, models?)` (src/lib/retokenizedCost.ts) is the Phase 2 cost layer: it takes the captured `rawCalls` (Phase 1 ground truth) and, for each target model, re-tokenizes the captured output text (and, where captured, prompt text) under that model's tokenizer and prices it at list rates. It is a sibling of `projectCounterfactual`, not a replacement — Effective/Nominal use the heuristic `outputMultiplier`; Retokenized uses real tokenizer counts.
+
+```ts
+export type RetokenizedCostRow = {
+  model: Model;
+  runs: number;               // rawCalls.length
+  totalCost: number;          // sum over captured calls, no cache/batch
+  perRunCost: number;         // totalCost / runs
+  targetOutputTokens: number;
+  targetInputTokens: number | null;  // null when no call captured promptText
+  method: "exact" | "approx"; // worst-case across calls
+  isExact: boolean;
+  notes: string[];            // honesty flags
+};
+```
+
+### 8.1 Contract
+
+- **Counts** come from `countTokens` (src/lib/tokenize.ts): exact via `gpt-tokenizer` (o200k_base for GPT-5/o-series, cl100k_base for the GPT-4 era) for OpenAI targets; a flagged char-ratio approximation for Anthropic Claude 4.x / Gemini (no official client-side tokenizer exists without a backend + API key).
+- **Cost** = re-tokenized tokens × the target model's list `inputPricePerM` / `outputPricePerM`. **No cache, no batch** — the counterfactual default per deliverable §3.2 ('for the target, default to FULL list price').
+- **`method`** is worst-case: if any call is approx, the row is approx. `notes` carries the per-row honesty flags (approx family; response-only trace with no promptText).
+- **Does not read** the heuristic `outputMultiplier`. `countTokens` is the only cross-model mechanism — this is the load-bearing distinction from the Effective/Nominal paths.
+- Result is sorted cheapest-first by `totalCost`.
+
+### 8.2 Honesty framing (load-bearing)
+
+This layer models the **tokenizer effect on the SAME captured output text**. It answers 'what would this exact text cost, priced at the target model's rates, under the target's tokenizer?' It does **not** model the target model **generating** different-length output (verbose/reasoning models emit more tokens per task) — that is **Phase 3 end-to-end replay** and is out of scope here. So for OpenAI targets the row is exact; for Anthropic/Gemini targets it is a flagged approximation that cannot support a billed-accuracy claim.
+
+### 8.3 UI
+
+`src/app/page.tsx` gains a third toggle, **Retokenized**, alongside Effective/Nominal (it is disabled with reduced opacity + a tooltip when no trace is pasted). When selected it renders a dedicated table — **Model | Target out tok | $/run | Method** — separate from the Effective/Nominal `Projection` table (different row shape; no monthly roll-up, no Δ% column). The Method cell shows **exact** (emerald) or **approx** (amber) with a tooltip carrying the row's notes; the anchor row (the trace's source model) is highlighted with the 'your run' badge. The caption beneath the table states the honesty framing verbatim.
+
+### 8.4 What this does NOT close
+
+- **Model verbosity** (a different model emitting more/fewer tokens) — that is Phase 3 replay.
+- **Cache / batch** on the counterfactual — deliberately omitted (counterfactual default = full list price).
+- **Billed ±5% accuracy** — still the Phase 1 invoice gate (`reconstructCost.ts` `passesPhase1`), `it.todo` until a real trace + invoice lands.
+- **Anthropic/Gemini true accuracy** — would need the Count Tokens API + an API key backend (out of scope; zero-backend).
+
+### 8.5 Definition of done for this increment
+
+- `npx tsc --noEmit` exit 0.
+- `npm run test` green: **59 passed + 2 todo** (prior 54 + 5 new `retokenizedCost` tests).
+- `npm run build` exit 0.
+- Strictly additive: Effective/Nominal paths and the existing `rows`/`projectCounterfactual` untouched.
+- `src/lib/retokenizedCost.ts` contains zero references to `outputMultiplier`.
+- Nothing committed — left uncommitted for review.
