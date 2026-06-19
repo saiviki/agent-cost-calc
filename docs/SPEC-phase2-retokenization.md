@@ -149,3 +149,9 @@ This layer models the **tokenizer effect on the SAME captured output text**. It 
 - Strictly additive: Effective/Nominal paths and the existing `rows`/`projectCounterfactual` untouched.
 - `src/lib/retokenizedCost.ts` contains zero references to `outputMultiplier`.
 - Nothing committed — left uncommitted for review.
+
+## 9. Extension point: a real Anthropic/Gemini tokenizer (future)
+
+The single `countTokens(text, modelId, provider)` dispatch in `src/lib/tokenize.ts` is **the seam** for swapping the Anthropic/Gemini char-ratio approximation for a real tokenizer. Adding an API-backed family (e.g. Anthropic `/v1/messages/count_tokens`) is a **localized** change: declare a new `TokenizerFamily` (e.g. `"anthropic-api"`), add one `if (family === "anthropic-api") { ... }` branch in `countTokens` that returns `method: "exact"`, and every call site (`retokenize.ts`, `retokenizedCost.ts`, `replayHarness.ts`) picks it up automatically — no call-site edits.
+
+This is **not built here** because it requires a backend + an API key (the Count Tokens endpoint is server-side), which breaks this app's zero-backend posture. It is an **opt-in product decision**, deferred until someone accepts that tradeoff. Until then Anthropic/Gemini targets stay on the flagged char-ratio approx (`method: "approx"`) — honest about the ± 20-30% band, never a fake "exact". Cross-link: `src/lib/tokenize.ts` (see the `EXTENSION POINT (P7)` comment above `countTokens`).

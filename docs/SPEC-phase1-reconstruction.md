@@ -67,7 +67,7 @@ Anthropic `usage` does not split `cache_creation_input_tokens` into 5m vs 1h. Th
 
 `detectProvider(raw_usage)` keys off the usage shape: `input_tokens` → `anthropic`; `prompt_tokens` → `openai`; `usage_metadata`/`cached_content_token_count` → `gemini`; else `unknown`.
 
-For **non-Anthropic** providers, `reconstructCost` throws a typed `ReconstructError` with `code: "UNSUPPORTED_PROVIDER"`. We do **not** guess OpenAI/Gemini cached-token rates (deliverable §3.4). A missing `raw_usage` throws `code: "NO_RAW_USAGE"`.
+`reconstructCost` supports Anthropic, OpenAI, and Gemini (each priced at the model's real `cacheReadPricePerM`). An unrecognized usage shape throws `UNKNOWN_PRICING`. A missing `raw_usage` throws `NO_RAW_USAGE`.
 
 ### 3.3 Explicit non-use of outputMultiplier
 
@@ -136,9 +136,8 @@ shape and prices **every** provider at the model's **REAL** `cacheReadPricePerM`
 
 Phase 3 `replayHarness.evaluateReplay` default `actualCostFn` now delegates to
 `computeCallCost` (de-dup vs the prior inlined `anthropicActualCost`, which was
-removed). A pluggable `actualCostFn` still overrides per-pair. The
-`UNSUPPORTED_PROVIDER` throw for non-Anthropic targets is gone — all providers
-resolve by default.
+removed). A pluggable `actualCostFn` still overrides per-pair.
+The prior non-Anthropic-provider throw is gone — all providers resolve by default.
 
 **Definition of done for c1:** `tsc`/`test`/`build` green; existing Anthropic
 reconstruction numbers unchanged; `parseTrace` ingestion of OpenAI/Gemini traces

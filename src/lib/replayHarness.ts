@@ -76,7 +76,7 @@ export type ActualCostFn = (usage: Record<string, unknown>, model: Model) => num
 export class ReplayError extends Error {
   constructor(
     message: string,
-    public readonly code: "LENGTH_MISMATCH" | "UNSUPPORTED_PROVIDER",
+    public readonly code: "LENGTH_MISMATCH",
   ) {
     super(message);
     this.name = "ReplayError";
@@ -182,7 +182,7 @@ export function evaluateReplay(
 
   // Default actual-cost delegates to computeCallCost (all providers; OpenAI/Gemini
   // via the model's REAL cacheReadPricePerM). Unknown usage shape -> computeCallCost
-  // throws ReconstructError UNKNOWN_PRICING (no more UNSUPPORTED_PROVIDER here).
+  // throws ReconstructError UNKNOWN_PRICING for unknown usage shapes.
   const fn: ActualCostFn =
     actualCostFn ?? ((usage, model) => computeCallCost(usage, model).cost);
 

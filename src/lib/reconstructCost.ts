@@ -13,7 +13,7 @@ export type ProviderKind = "anthropic" | "openai" | "gemini" | "unknown";
 export class ReconstructError extends Error {
   constructor(
     message: string,
-    public readonly code: "UNSUPPORTED_PROVIDER" | "NO_RAW_USAGE" | "UNKNOWN_PRICING",
+    public readonly code: "NO_RAW_USAGE" | "UNKNOWN_PRICING",
   ) {
     super(message);
     this.name = "ReconstructError";
@@ -69,6 +69,19 @@ function asObject(v: unknown): Record<string, unknown> | undefined {
   return v !== null && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : undefined;
+}
+
+// True iff `key` is PRESENT on `obj` (the value may legitimately be 0). Used by
+// the OpenAI/Gemini field-name defensiveness warnings (runbook §4): absent vs
+// present-and-zero is the signal — a real no-cache trace carries the field as 0,
+// so only an UNDEFINED field is drift-suspect. Anthropic is intentionally NOT
+// guarded here (bit-identical Anthropic output is the priority; the parse-side
+// readUsageNumber warnings already cover Anthropic field handling).
+function hasField(
+  obj: Record<string, unknown> | undefined,
+  key: string,
+): boolean {
+  return !!obj && obj[key] !== undefined;
 }
 
 // Detect provider from the raw_usage shape (deliverable §3.4).
@@ -240,12 +253,20 @@ export function computeCallCost(
     // under prompt_tokens_details.cached_tokens.
     const promptTokens = num(raw_usage.prompt_tokens);
     const completionTokens = num(raw_usage.completion_tokens);
-    const cachedTokens = num(
-      asObject(raw_usage.prompt_tokens_details)?.cached_tokens,
-    );
+    const ptd = asObject(raw_usage.prompt_tokens_details);
+    const cachedTokens = num(ptd?.cached_tokens);
     const reasoningTokens = num(
       asObject(raw_usage.completion_tokens_details)?.reasoning_tokens,
     );
+    // Field-name defensiveness (runbook §4): cached_tokens is the only
+    // bill-changing OpenAI field. Warn when ABSENT (a real no-cache trace carries
+    // it as 0 — present-and-zero must stay warning-free). reasoning_tokens is NOT
+    // guarded: 0 is a correct non-reasoning value, not a field-name assumption.
+    if (!hasField(ptd, "cached_tokens") && promptTokens > 0) {
+      warnings.push(
+        "OpenAI: prompt_tokens_details.cached_tokens absent — assumed 0 (no cache discount applied). If this trace used prompt caching, verify the field name on the real API response.",
+      );
+    }
     const nonCachedInput = Math.max(0, promptTokens - cachedTokens);
     const inputCost = (nonCachedInput / 1e6) * model.inputPricePerM;
     const cacheReadCost = (cachedTokens / 1e6) * (model.cacheReadPricePerM ?? 0);
@@ -287,6 +308,21 @@ export function computeCallCost(
   const candidatesTokens = num(um.candidates_token_count);
   const cachedTokens = num(um.cached_content_token_count);
   const thoughtsTokens = num(um.thoughts_token_count);
+  // Field-name defensiveness (runbook §4): cached_content_token_count and
+  // thoughts_token_count are the drift-prone bill-changing Gemini fields. Warn
+  // when ABSENT (present-and-zero is a legitimate no-cache/no-thinking value and
+  // must stay warning-free). Guard on prompt/candidates > 0 to skip degenerate
+  // empty traces.
+  if (!hasField(um, "cached_content_token_count") && promptTokens > 0) {
+    warnings.push(
+      "Gemini: cached_content_token_count absent — assumed 0 (no cache discount applied). If this trace used implicit caching, verify the field name.",
+    );
+  }
+  if (!hasField(um, "thoughts_token_count") && candidatesTokens > 0) {
+    warnings.push(
+      "Gemini: thoughts_token_count absent — assumed 0 (output under-counted). If the model used thinking, verify the field name.",
+    );
+  }
   const nonCachedInput = Math.max(0, promptTokens - cachedTokens);
   const inputCost = (nonCachedInput / 1e6) * model.inputPricePerM;
   const cacheReadCost = (cachedTokens / 1e6) * (model.cacheReadPricePerM ?? 0);

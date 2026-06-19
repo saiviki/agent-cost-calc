@@ -331,3 +331,81 @@ describe("reconstructCost — provider detection and errors", () => {
     expect((err as ReconstructError).code).toBe("NO_RAW_USAGE");
   });
 });
+
+describe("reconstructCost — field-name defensiveness", () => {
+  // OpenAI without prompt_tokens_details: cached_tokens is ABSENT (not 0).
+  // computedCost = 1000/1e6*5 + 200/1e6*30 = 0.005 + 0.006 = 0.011 (all input
+  // billed non-cached; no cache discount). A warning surfaces the absent
+  // bill-changing field (runbook §4: field-name drift is suspect #1).
+  it("warns when OpenAI prompt_tokens_details.cached_tokens is absent", () => {
+    const rawCall: RawCall = {
+      raw_usage: {
+        prompt_tokens: 1000,
+        completion_tokens: 200,
+      },
+      call_flags: { provider: "openai" },
+    };
+    const result = reconstructCost({ rawCalls: [rawCall], model: gpt55Model });
+    expect(result.perCall[0].computedCost).toBeCloseTo(0.011, 6);
+    expect(
+      result.warnings.some((w) => w.includes("cached_tokens absent")),
+    ).toBe(true);
+  });
+
+  // OpenAI WITH prompt_tokens_details.cached_tokens: 0 — a legitimate no-cache
+  // trace. Present-and-zero is NOT absent: no defensive warning fires.
+  it("does NOT warn when OpenAI cached_tokens is present-and-zero (legitimate no-cache)", () => {
+    const rawCall: RawCall = {
+      raw_usage: {
+        prompt_tokens: 1000,
+        completion_tokens: 200,
+        prompt_tokens_details: { cached_tokens: 0 },
+      },
+      call_flags: { provider: "openai" },
+    };
+    const result = reconstructCost({ rawCalls: [rawCall], model: gpt55Model });
+    expect(result.perCall[0].computedCost).toBeCloseTo(0.011, 6);
+    expect(result.warnings.some((w) => w.includes("absent"))).toBe(false);
+  });
+
+  // Gemini without cached_content_token_count or thoughts_token_count: both
+  // drift-prone fields ABSENT. Both warnings fire.
+  it("warns when Gemini cached_content_token_count and thoughts_token_count are absent", () => {
+    const rawCall: RawCall = {
+      raw_usage: {
+        usage_metadata: {
+          prompt_token_count: 1000,
+          candidates_token_count: 150,
+        },
+      },
+      call_flags: { provider: "gemini" },
+    };
+    const result = reconstructCost({ rawCalls: [rawCall], model: geminiModel });
+    // cost = 1000/1e6*2 + 150/1e6*12 = 0.002 + 0.0018 = 0.0038 (thoughts 0).
+    expect(result.perCall[0].computedCost).toBeCloseTo(0.0038, 6);
+    expect(
+      result.warnings.some((w) => w.includes("cached_content_token_count absent")),
+    ).toBe(true);
+    expect(
+      result.warnings.some((w) => w.includes("thoughts_token_count absent")),
+    ).toBe(true);
+  });
+
+  // Gemini with all fields present (existing fixture shape), values 0:
+  // present-and-zero is NOT absent — no defensiveness warnings. Smoke check.
+  it("does NOT warn for absent fields when Gemini usage_metadata is complete", () => {
+    const rawCall: RawCall = {
+      raw_usage: {
+        usage_metadata: {
+          prompt_token_count: 1000,
+          candidates_token_count: 150,
+          cached_content_token_count: 0,
+          thoughts_token_count: 0,
+        },
+      },
+      call_flags: { provider: "gemini" },
+    };
+    const result = reconstructCost({ rawCalls: [rawCall], model: geminiModel });
+    expect(result.warnings.some((w) => w.includes("absent"))).toBe(false);
+  });
+});

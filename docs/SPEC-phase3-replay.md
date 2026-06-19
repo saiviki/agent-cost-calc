@@ -65,8 +65,7 @@ export function evaluateReplay(plan, actuals, target, actualCostFn?) : ReplayEva
 
 **Errors:**
 
-- `ReplayError(LENGTH_MISMATCH)` — `actuals.length !== plan.items.length`.
-- `ReplayError(UNSUPPORTED_PROVIDER)` — non-Anthropic target with no `actualCostFn`.
+- `ReplayError(LENGTH_MISMATCH)` — `actuals.length !== plan.items.length`. (Non-Anthropic targets now work via the `computeCallCost` default; unknown usage shapes throw `ReconstructError(UNKNOWN_PRICING)` from `computeCallCost`.)
 
 ## 4. Statistics + gate
 

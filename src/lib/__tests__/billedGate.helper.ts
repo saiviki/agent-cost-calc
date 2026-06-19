@@ -65,14 +65,14 @@ export function runBilledGate(fixtureFileName: string): BilledGateResult {
     billedCostPerRun === null ? null : billedCostPerRun * runs;
 
   // Resolve the model: fuzzy-match parsed.sourceModel against MODELS using the
-  // SAME convention parseTrace uses (src===id || src.includes(id) ||
-  // src.startsWith(m.id) — Anthropic appends date suffixes). Fall back to the
+  // SAME convention parseTrace uses (src===id || src.includes(id) —
+  // Anthropic appends date suffixes, matched via includes). Fall back to the
   // expected.json expectedSourceModel if sourceModel is absent/unmatched.
   let model: Model | undefined;
   if (parsed.sourceModel) {
     const src = parsed.sourceModel;
     model = MODELS.find(
-      (m) => src === m.id || src.includes(m.id) || src.startsWith(m.id),
+      (m) => src === m.id || src.includes(m.id),
     );
   }
   if (!model && typeof entry.expectedSourceModel === "string") {

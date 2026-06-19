@@ -73,6 +73,16 @@ export function tokenizerFamilyForModel(
   return "unknown";
 }
 
+// EXTENSION POINT (P7): the single countTokens(text, modelId, provider)
+// dispatch below is the seam. A future API-backed Anthropic tokenizer (calling
+// /v1/messages/count_tokens) or a Gemini tokenizer adds a new TokenizerFamily
+// (e.g. "anthropic-api") + a branch here that returns method:"exact" — without
+// touching any call site (retokenize.ts, retokenizedCost.ts, replayHarness.ts
+// all call countTokens). That requires a backend + API key (breaks zero-backend),
+// so it is an opt-in product decision, not a default. Until then Anthropic/Gemini
+// targets return the flagged char-ratio approx below.
+// See docs/SPEC-phase2-retokenization.md §9.
+//
 // Re-tokenize `text` with the tokenizer selected by (modelId, provider).
 // Exact for OpenAI families (real gpt-tokenizer BPE); flagged char-ratio approx
 // for Anthropic/Gemini (no official client-side tokenizer exists — see header).

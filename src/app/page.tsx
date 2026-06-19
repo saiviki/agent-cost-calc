@@ -333,7 +333,7 @@ function TracePanel({
   // Phase 1 ground-truth reconstruction: cost of the captured run on its ORIGINAL
   // model, derived from provider raw_usage as billed (exact cache/batch rates,
   // no verbosity estimate). Distinct from the heuristic projection below.
-  // Swallow ReconstructError (unsupported provider / missing usage) so the page
+  // Swallow ReconstructError (unknown usage shape / missing usage) so the page
   // never crashes — same defensive posture as `error`/`warnings` above.
   // Placed after anchorModel (declared just above) so it is in scope.
   const reconstruction = useMemo(() => {

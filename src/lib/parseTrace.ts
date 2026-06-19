@@ -774,7 +774,7 @@ export function parsedRunToConfig(p: ParsedRun): AgentConfig {
   let modelId = "claude-sonnet-4-6";
   if (p.sourceModel) {
     const src = p.sourceModel;
-    const match = MODELS.find((m) => src === m.id || src.includes(m.id) || src.startsWith(m.id));
+    const match = MODELS.find((m) => src === m.id || src.includes(m.id));
     if (match) {
       modelId = match.id;
     } else {
