@@ -1,0 +1,39 @@
+{
+  "scan_id": "scan-2026-06-19-002-rescan",
+  "scan_date": "2026-06-19T18:00:00Z",
+  "scan_type": "range",
+  "commit_range": "d97bd4c..a5d3363",
+  "pr_number": null,
+  "threat_model_version": "1.0.0",
+  "findings": [],
+  "summary": {
+    "total_findings": 0,
+    "by_severity": { "CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0 },
+    "by_stride": {
+      "Spoofing": 0,
+      "Tampering": 0,
+      "Repudiation": 0,
+      "InfoDisclosure": 0,
+      "DoS": 0,
+      "ElevationOfPrivilege": 0
+    },
+    "files_analyzed": 2,
+    "previous_findings_resolved": [
+      {
+        "id": "VULN-001",
+        "resolution": "Fixed in a5d3363 — Gemini key moved from URL query string to x-goog-api-key header. Verified: grep for ?key=/\\?api[_-]?key= in src/ and scripts/ returns only the explanatory comment, no live sink.",
+        "verified": true
+      },
+      {
+        "id": "VULN-002",
+        "resolution": "Fixed in a5d3363 — tokenize.ts now caps BPE input at MAX_TOKENIZE_CHARS (1M) and extrapolates from a prefix beyond that. Method flips to 'approx' with a flagged source string so callers can detect the cap.",
+        "verified": true
+      }
+    ]
+  },
+  "dependency_audit": {
+    "npm_audit_result": "0 vulnerabilities",
+    "timestamp": "2026-06-19T18:00:00Z"
+  },
+  "verdict": "PASS — no CRITICAL/HIGH/MEDIUM/LOW findings. Production deploy block may be lifted."
+}
