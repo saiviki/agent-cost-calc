@@ -34,7 +34,7 @@ describe("billedGate.helper — gate mechanics on synthetic fixtures", () => {
     // (anthropic); sourceModelId is the resolved PRICED model (glm-5.1).
     expect(g.sourceModelId).toBe("glm-5.1");
     expect(g.provider).toBe("anthropic");
-    expect(g.computedCost).toBeCloseTo(0.01785, 6);
+    expect(g.computedCost).toBeCloseTo(0.00112, 6);
   });
 
   // ── Load-bearing honesty assertion (P4) ──

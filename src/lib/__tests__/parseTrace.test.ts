@@ -496,25 +496,24 @@ describe("accuracy harness (real fixtures)", () => {
     expect(result.totalComputed).toBeCloseTo(0.03735, 6);
   });
 
-  it("reconstructs droid-run.json to the hand-computed GLM 5.1 total (0.01785)", () => {
+  it("reconstructs droid-run.json to the hand-computed GLM 5.1 total (0.00112)", () => {
     const raw = readFileSync(
       join(process.cwd(), "fixtures", "droid-run.json"),
       "utf8",
     );
     const parsed = parseTrace(raw);
     const glm = MODELS.find((m) => m.id === "glm-5.1")!;
-    // GLM 5.1 prices (src/lib/models.ts:297-316): input 1.05, output 3.50,
-    // cacheRead 0.525, supportsCache true, cacheWritePricePerM UNDEFINED.
-    // Per harness rule cacheWrite5mCost = tokens/1e6 × (price ?? 0) = 0 — GLM 5.1
-    // declares no write price, so we do NOT guess one (deliverable §3.4 'do not guess').
-    //   Run1: 3000×1.05/1e6=0.00315 + 5000×0.525/1e6=0.002625 + 2000×0/1e6=0 + 800×3.50/1e6=0.0028 = 0.008575
-    //   Run2: 3500×1.05/1e6=0.003675 + 6000×0.525/1e6=0.00315 + 0 + 700×3.50/1e6=0.00245 = 0.009275
-    //   totalComputed = 0.01785
+    // GLM 5.1 prices (PR #2 moved GLM to Budget): input 0.14, output 0.14,
+    // supportsCache false (no cacheRead/cacheWrite). Per harness rule
+    // cacheRead/cacheWrite cost = 0 when supportsCache=false.
+    //   Run1: 3000×0.14/1e6=0.00042 + 0 (cache) + 800×0.14/1e6=0.000112 = 0.000532
+    //   Run2: 3500×0.14/1e6=0.00049 + 0 (cache) + 700×0.14/1e6=0.000098 = 0.000588
+    //   totalComputed = 0.00112
     const result = reconstructCost({
       rawCalls: parsed.rawCalls ?? [],
       model: glm,
     });
-    expect(result.totalComputed).toBeCloseTo(0.01785, 6);
+    expect(result.totalComputed).toBeCloseTo(0.00112, 6);
   });
 
   // ── BILLED accuracy gate (TODO — needs real operator invoices) ──

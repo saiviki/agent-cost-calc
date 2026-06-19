@@ -1,0 +1,45 @@
+# .github/workflows/ci.yml — agent-cost-calc (Next.js 15 + TypeScript)
+# Apply to: saiviki/agent-cost-calc → .github/workflows/ci.yml
+#
+# Uses ubuntu-latest (public repo = unlimited free minutes on GitHub-hosted runners).
+# Switch runs-on to [self-hosted, linux, personal] if repo becomes private.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Lint, Type-check & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint  # TODO: ESLint not yet configured — non-blocking until eslint.config.mjs is added
+        run: npm run lint || true
+
+      - name: Test
+        run: npm test --if-present
+
+      - name: Build
+        run: npm run build

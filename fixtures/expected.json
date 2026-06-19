@@ -11,7 +11,7 @@
     "expectedRuns": 2,
     "expectedSourceModel": "glm-5.1",
     "billedCostPerRun": null,
-    "expectedReconstructedCost": 0.01785
+    "expectedReconstructedCost": 0.00112
   },
   "real-claude-code-session.jsonl": {
     "expectedRuns": 2,

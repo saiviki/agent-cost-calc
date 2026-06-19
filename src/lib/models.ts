@@ -293,28 +293,26 @@ export const MODELS: Model[] = [
       confidence: { coding: "high", reasoning: "high", general: "med" },
     },
   },
+  // ── BUDGET ──
   {
     id: "glm-5.1",
     name: "GLM 5.1",
     provider: "Z.ai",
     isOpen: true,
-    tier: "mid",
-    strengths: ["coding", "reasoning", "general"],
-    contextK: 202,
-    inputPricePerM: 1.05,
-    outputPricePerM: 3.50,
-    cacheReadPricePerM: 0.525,
-    supportsCache: true,
+    tier: "budget",
+    strengths: ["coding", "long-context"],
+    contextK: 128,
+    inputPricePerM: 0.14,
+    outputPricePerM: 0.14,
+    supportsCache: false,
     outputMultiplier: 1.0,
     multiplierSource: "placeholder: no reasoning-mode data on Artificial Analysis (2026-05-30)",
     multiplierConfidence: "low",
-    // general=65 is low-confidence — no reasoning-mode general/knowledge data on AA.
     capability: {
       scores: { coding: 72, reasoning: 68, general: 65 },
       confidence: { coding: "med", reasoning: "med", general: "low" },
     },
   },
-  // ── BUDGET ──
   {
     id: "deepseek-v4-flash",
     name: "DeepSeek V4 Flash",
