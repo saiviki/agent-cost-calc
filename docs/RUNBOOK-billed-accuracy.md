@@ -75,6 +75,23 @@ and the validation is only valid against the dated price table (§4.7). Check/up
 
 ## 3. Drop-in steps (~5 minutes)
 
+### Shortcut: `npm run add-fixture`
+
+`npm run add-fixture -- <traceFile> <billedPerRun> [modelId]` performs steps 1–2
+and prints the exact `it()` block for step 3, then runs `runBilledGate` immediately
+for instant feedback (the `billedPerRun` arg is **your real per-run invoice $** —
+the script does NOT fabricate a bill). Add `--dry-run` to preview the would-be
+`expected.json` patch + the `it()` block without writing; `--note "..."` is
+optional. The manual steps below remain the explainer.
+
+```bash
+npm run add-fixture -- real-anthropic-agent.jsonl 0.0123 claude-sonnet-4-6
+# preview only:
+npm run add-fixture -- real-anthropic-agent.jsonl 0.0123 --dry-run
+```
+
+### Manual steps
+
 1. **Save the real trace** to `fixtures/<name>`:
    - `fixtures/real-anthropic-agent.jsonl`
    - `fixtures/real-openai-run.json`

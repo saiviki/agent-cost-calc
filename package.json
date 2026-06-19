@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "add-fixture": "tsx scripts/add-billed-fixture.ts",
+    "replay": "tsx scripts/replay-driver.ts"
   },
   "dependencies": {
     "gpt-tokenizer": "^3.4.0",
@@ -22,6 +24,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.22.4",
     "typescript": "^5",
     "vitest": "^3.0.0"
   }

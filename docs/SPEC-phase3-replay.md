@@ -108,6 +108,30 @@ const result = evaluateReplay(plan, actuals, targetB);     // pure, no network
 
 `runPlanAgainstModelB` is **not** implemented here — it requires a backend + API key and breaks the zero-backend constraint, so it is an operator-owned script.
 
+### Operator driver: `npm run replay`
+
+`scripts/replay-driver.ts` (run via `npm run replay`) implements the whole flow:
+`buildReplayPlan` → actual calls → `evaluateReplay`.
+
+```bash
+# 1. Verify the plumbing with NO network. Actuals are SYNTHETIC (constructed so
+#    prompt_tokens ≈ countTokens(promptText, target)) → inputTokenDiffMedianPct ≈ 0.
+#    This proves the DRIVER, NOT accuracy.
+npm run replay -- <traceFile> <targetModelId> --dry-run
+
+# 2. Real replays — makes PAID calls to the target provider with YOUR key:
+ANTHROPIC_API_KEY=... npm run replay -- <traceFile> <targetModelId>
+#   (OPENAI_API_KEY for OpenAI targets, GOOGLE_API_KEY/GEMINI_API_KEY for Gemini.
+#    --provider auto is inferred from the target; --api-model overrides the model
+#    string sent to the API; --calls N caps the replay count.)
+```
+
+The dry run uses **synthetic actuals**, so `inputTokenDiffMedianPct ≈ 0` — this
+proves the driver plumbing only, **not** accuracy. The empirical Phase 3 result
+still requires the real replays (≥20 paid calls per methodology §4.4) with your
+key. Tools are omitted (§2). Per-call failures are recorded as zero-usage
+placeholders and noted in the summary (one failure does not abort the run).
+
 ## 7. DoD
 
 - `npx tsc --noEmit` → exit 0. [V]
