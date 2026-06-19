@@ -231,11 +231,18 @@ async function callProvider(
     return (json.usage as Record<string, unknown> | undefined) ?? {};
   }
   // gemini
+  // Security: pass the key via the x-goog-api-key header, NOT as a URL query
+  // param (?key=...). Query strings are captured by proxy/access/crash logs and
+  // process listings, which would leak the operator's Google API key. This
+  // matches Google's documented auth and the Anthropic/OpenAI branches above.
   const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:generateContent`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "x-goog-api-key": key,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: promptText }] }],
       }),

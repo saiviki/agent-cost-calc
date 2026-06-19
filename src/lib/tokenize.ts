@@ -15,6 +15,12 @@
 import { encode as encodeO200k } from "gpt-tokenizer/encoding/o200k_base";
 import { encode as encodeCl100k } from "gpt-tokenizer/encoding/cl100k_base";
 
+// Security DoS guard (CWE-1333): the synchronous BPE encode below runs on the
+// main thread. Past this many characters the encoder degrades the tab/UI, so we
+// count a prefix and extrapolate instead. 1M chars ≈ 250k tokens — well past any
+// realistic single message and still cheap to encode.
+const MAX_TOKENIZE_CHARS = 1_000_000;
+
 export type TokenizerMethod = "exact" | "approx";
 
 export type TokenizerFamily =
@@ -93,6 +99,26 @@ export function countTokens(
 ): TokenCount {
   const family = tokenizerFamilyForModel(modelId, provider);
   const s = text ?? "";
+
+  // Security (CWE-1333, threat-model §4 DoS): guard the synchronous BPE encode
+  // against unbounded input. gpt-tokenizer runs on the main thread; a multi-MB
+  // paste would freeze the tab. Cap at MAX_TOKENIZE_CHARS and, when exceeded,
+  // count the prefix and extrapolate (good enough for relative cost sizing —
+  // the only caller purpose). Approx-branch already caps via ceil(len/ratio).
+  if (s.length > MAX_TOKENIZE_CHARS && (family === "openai-o200k" || family === "openai-cl100k")) {
+    const prefix = s.slice(0, MAX_TOKENIZE_CHARS);
+    const prefixCount =
+      family === "openai-o200k"
+        ? encodeO200k(prefix).length
+        : encodeCl100k(prefix).length;
+    const count = Math.ceil((prefixCount * s.length) / MAX_TOKENIZE_CHARS);
+    return {
+      count,
+      method: "approx",
+      family,
+      source: `gpt-tokenizer ${family === "openai-o200k" ? "o200k_base" : "cl100k_base"} extrapolated from ${MAX_TOKENIZE_CHARS}-char prefix (input ${s.length} chars > cap; DoS guard)`,
+    };
+  }
 
   if (family === "openai-o200k") {
     const count = encodeO200k(s).length;
