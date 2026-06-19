@@ -9,7 +9,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "add-fixture": "tsx scripts/add-billed-fixture.ts",
-    "replay": "tsx scripts/replay-driver.ts"
+    "replay": "tsx scripts/replay-driver.ts",
+    "validate-counterfactual": "tsx scripts/validate-counterfactual.ts"
   },
   "dependencies": {
     "gpt-tokenizer": "^3.4.0",

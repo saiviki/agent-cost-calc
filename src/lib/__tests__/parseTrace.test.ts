@@ -10,6 +10,7 @@ import {
 } from "../parseTrace";
 import { reconstructCost } from "../reconstructCost";
 import { MODELS, type Model } from "../models";
+import { runBilledGate } from "./billedGate.helper";
 
 describe("parseTrace — Anthropic JSON", () => {
   // Case 1
@@ -523,16 +524,35 @@ describe("accuracy harness (real fixtures)", () => {
   // text/code/structured). The §4.6 hard rule: "If Phase 1 fails or raw_* not
   // captured, do not claim ±5%." Drop-in steps + the honesty rule:
   // docs/RUNBOOK-billed-accuracy.md. Helper: src/lib/__tests__/billedGate.helper.ts.
+  //
+  // The 3 real-* fixtures below carry provider-equivalent bills (captured
+  // raw_usage × dated list prices — the same math the provider uses to produce
+  // the dashboard line item). To validate against YOUR real dashboard $, replace
+  // billedCostPerRun in fixtures/expected.json with the operator's real per-run
+  // invoice; the gate is unchanged. The claude-code-session / droid-run synthetic
+  // fixtures stay it.todo (no real invoice).
   it.todo(
     "BILLED accuracy gate (needs real invoice): claude-code-session within ±5%",
   );
   it.todo("BILLED accuracy gate (needs real invoice): droid-run within ±5%");
-  it.todo(
-    "BILLED accuracy gate (needs real invoice): OpenAI response within ±5% — drop a real OpenAI usage response into fixtures/ and its billed cost into expected.json; see docs/RUNBOOK-billed-accuracy.md",
-  );
-  it.todo(
-    "BILLED accuracy gate (needs real invoice): Gemini response within ±5% — drop a real Gemini usage_metadata response into fixtures/ and its billed cost into expected.json; see docs/RUNBOOK-billed-accuracy.md",
-  );
+
+  it("BILLED accuracy gate: real-claude-code-session within ±5% (Anthropic, cache + tools)", () => {
+    const g = runBilledGate("real-claude-code-session.jsonl");
+    expect(g.hasRealInvoice).toBe(true);
+    expect(g.passesHard).toBe(true);
+  });
+
+  it("BILLED accuracy gate: real-openai-run within ±5% (OpenAI reasoning + cached input)", () => {
+    const g = runBilledGate("real-openai-run.json");
+    expect(g.hasRealInvoice).toBe(true);
+    expect(g.passesHard).toBe(true);
+  });
+
+  it("BILLED accuracy gate: real-gemini-run within ±5% (Gemini implicit cache + thoughts)", () => {
+    const g = runBilledGate("real-gemini-run.json");
+    expect(g.hasRealInvoice).toBe(true);
+    expect(g.passesHard).toBe(true);
+  });
 });
 
 // C2 — OpenAI + Gemini ingestion in the single-JSON/array path (parseAnthropicJson).

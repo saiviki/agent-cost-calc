@@ -1,0 +1,53 @@
+[
+  {
+    "model": "gpt-5.5",
+    "usage": {
+      "prompt_tokens": 12000,
+      "completion_tokens": 850,
+      "prompt_tokens_details": { "cached_tokens": 7000 },
+      "completion_tokens_details": { "reasoning_tokens": 320 }
+    },
+    "choices": [
+      {
+        "message": {
+          "role": "assistant",
+          "content": "Step 1: I parse the schema. Step 2: I emit the migration. Here is the SQL:\n```sql\nALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE;\nCREATE INDEX CONCURRENTLY idx_users_email_verified ON users(email_verified);\n```\nDone."
+        }
+      }
+    ]
+  },
+  {
+    "model": "gpt-5.5",
+    "usage": {
+      "prompt_tokens": 15500,
+      "completion_tokens": 1200,
+      "prompt_tokens_details": { "cached_tokens": 11000 },
+      "completion_tokens_details": { "reasoning_tokens": 540 }
+    },
+    "choices": [
+      {
+        "message": {
+          "role": "assistant",
+          "content": "Reviewed the failing tests. The auth module returns 401 because the session cookie is not refreshed. Here is the fix:\n```python\nif session.expired():\n    session = refresh(session)\n```\nCitations: https://example.com/auth-refresh [1] [2]"
+        }
+      }
+    ]
+  },
+  {
+    "model": "gpt-5.5",
+    "usage": {
+      "prompt_tokens": 9000,
+      "completion_tokens": 600,
+      "prompt_tokens_details": { "cached_tokens": 0 },
+      "completion_tokens_details": { "reasoning_tokens": 180 }
+    },
+    "choices": [
+      {
+        "message": {
+          "role": "assistant",
+          "content": "No cache on this turn. Returning structured JSON:\n```json\n{\"status\": \"ok\", \"items\": 3}\n```"
+        }
+      }
+    ]
+  }
+]

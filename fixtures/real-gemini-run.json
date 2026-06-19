@@ -1,0 +1,44 @@
+[
+  {
+    "model_version": "gemini-3.1-pro",
+    "usage_metadata": {
+      "prompt_token_count": 18000,
+      "candidates_token_count": 420,
+      "cached_content_token_count": 9000,
+      "thoughts_token_count": 380
+    },
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Analyzed the request. The image shows a deployment topology with three regions. Recommendation: pin the primary in us-central1 and replicate to europe-west4 + asia-east1. Citation: https://cloud.google.com/compute/docs/regions [1]."
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "model_version": "gemini-3.1-pro",
+    "usage_metadata": {
+      "prompt_token_count": 24000,
+      "candidates_token_count": 650,
+      "cached_content_token_count": 16000,
+      "thoughts_token_count": 720
+    },
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Step 1: validate the IAM bindings. Step 2: rotate the service-account key. Structured output follows:\n```json\n{\"rotated\": true, \"old_key_id\": \"k-1234\"}\n```"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

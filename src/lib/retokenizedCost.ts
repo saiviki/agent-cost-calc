@@ -18,18 +18,31 @@ export type RetokenizedCostRow = {
   runs: number; // rawCalls.length
   totalCost: number; // sum over captured calls, no cache/batch
   perRunCost: number; // totalCost / runs
-  targetOutputTokens: number; // sum of re-tokenized completionText across calls
+  targetOutputTokens: number; // sum of re-tokenized completionText across calls (verbosity multiplier applied when applyVerbosityMultiplier)
   targetInputTokens: number | null; // sum of re-tokenized promptText; null when NO call had promptText (response-only trace)
   method: TokenizerMethod; // worst-case: 'approx' if any call approx, else 'exact'
   isExact: boolean; // method === 'exact'
+  multiplierApplied: number; // 1 when applyVerbosityMultiplier=false; else model.outputMultiplier (flagged verbosity factor on top of real tokenization — SPEC-phase2 §8)
   notes: string[]; // honesty flags
+};
+
+export type ProjectRetokenizedOptions = {
+  // When true, scales the re-tokenized OUTPUT token count by model.outputMultiplier
+  // (a flagged verbosity factor layered ON TOP of the real tokenizer count — NOT a
+  // replacement for it). Default false keeps the pure-tokenizer behaviour that
+  // docs/AUDIT-counterfactual-vs-validation-spec.md central finding mandates.
+  // Sanctioned by docs/SPEC-phase2-retokenization.md §8: real counts drive the
+  // base; the multiplier adjusts the output side for cross-model verbosity.
+  applyVerbosityMultiplier?: boolean;
 };
 
 export function projectRetokenized(
   rawCalls: RawCall[],
   models?: Model[],
+  options?: ProjectRetokenizedOptions,
 ): RetokenizedCostRow[] {
   const set = models ?? MODELS;
+  const applyMult = options?.applyVerbosityMultiplier === true;
   if (rawCalls.length === 0) return []; // guard
   const runs = rawCalls.length;
   return set
@@ -51,9 +64,15 @@ export function projectRetokenized(
           if (inp.method === "approx") anyApprox = true;
         }
       }
+      // Verbosity multiplier: scales the OUTPUT-side re-tokenized count by
+      // model.outputMultiplier (flagged verbosity factor, applied on top of the
+      // real tokenizer count — NOT in place of it). Input side is never scaled
+      // (the multiplier is an output-verbosity signal, not an input-token signal).
+      const multiplierApplied = applyMult ? model.outputMultiplier : 1;
+      const effectiveOutputTokens = totalOutputTokens * multiplierApplied;
       // Cost: no cache, no batch (counterfactual default). Input cost only
       // computable when promptText was captured.
-      const outputCost = (totalOutputTokens / 1e6) * model.outputPricePerM;
+      const outputCost = (effectiveOutputTokens / 1e6) * model.outputPricePerM;
       const inputCost = anyPromptText
         ? (totalInputTokens / 1e6) * model.inputPricePerM
         : 0;
@@ -68,15 +87,20 @@ export function projectRetokenized(
         notes.push(
           "No prompt text captured (response-only trace) — input-side cost omitted; output-side only.",
         );
+      if (applyMult && model.outputMultiplier !== 1)
+        notes.push(
+          `${model.name}: output count × ${model.outputMultiplier} (model.outputMultiplier verbosity factor on top of real tokenization).`,
+        );
       return {
         model,
         runs,
         totalCost,
         perRunCost: totalCost / runs,
-        targetOutputTokens: totalOutputTokens,
+        targetOutputTokens: effectiveOutputTokens,
         targetInputTokens: anyPromptText ? totalInputTokens : null,
         method,
         isExact: method === "exact",
+        multiplierApplied,
         notes,
       };
     })

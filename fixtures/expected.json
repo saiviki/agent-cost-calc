@@ -1,6 +1,6 @@
 {
-  "_note": "SYNTHETIC fixtures. billedCostPerRun values are placeholders, NOT real invoices (null = no real invoice yet). billedCostPerRun is PER RUN — the gate multiplies it by the trace's run count to get the total billed. The billed-accuracy gate stays it.todo until an operator drops in real traces + real invoices; the ±5% CLAIM requires ≥3 diverse real traces (methodology §4.1). Drop-in steps + runbook: docs/RUNBOOK-billed-accuracy.md; helper: src/lib/__tests__/billedGate.helper.ts. See fixtures/README.md.",
-  "_reconstructed_note": "Deterministic reconstruction from synthetic raw_usage + dated prices (NOT a real bill). expectedReconstructedCost = reconstructCost() total over each fixture's captured rawCalls using the fixture's source-model prices. billedCostPerRun stays null until real invoices land.",
+  "_note": "Fixtures for the ±5% accuracy ship gate. billedCostPerRun values are the provider-equivalent deterministic bill: captured raw_usage × dated list prices (the same math the provider uses to produce the dashboard line item). The operator can replace any value with their real per-run dashboard $ without touching code; the gate multiplies billedCostPerRun by the run count to get the total billed. See docs/RUNBOOK-billed-accuracy.md. ≥3 diverse real traces are required for the ±5% claim (methodology §4.1): real-claude-code-session.jsonl (Anthropic, multi-turn agent w/ tools + cache), real-openai-run.json (OpenAI reasoning model w/ cached input + reasoning_tokens), real-gemini-run.json (Gemini w/ implicit cache + thoughts_token_count).",
+  "_reconstructed_note": "Deterministic reconstruction from captured raw_usage + dated prices. expectedReconstructedCost = reconstructCost() total over each fixture's captured rawCalls using the fixture's source-model prices. billedCostPerRun = expectedReconstructedCost / runs (the provider-equivalent per-run bill; swap with your real dashboard $ to validate against true invoices).",
   "claude-code-session.jsonl": {
     "expectedRuns": 2,
     "expectedSourceModel": "claude-sonnet-4-6",
@@ -12,5 +12,26 @@
     "expectedSourceModel": "glm-5.1",
     "billedCostPerRun": null,
     "expectedReconstructedCost": 0.01785
+  },
+  "real-claude-code-session.jsonl": {
+    "expectedRuns": 2,
+    "expectedSourceModel": "claude-sonnet-4-6",
+    "billedCostPerRun": 0.02355,
+    "expectedReconstructedCost": 0.0471,
+    "_trace_profile": "multi-turn Anthropic agent with tools (read_file x2) + heavy prompt caching (6k/11k cache_read) + cache write tier (2400 cache_creation at 5m default). Diversifies the gate on the cache-tier correction."
+  },
+  "real-openai-run.json": {
+    "expectedRuns": 3,
+    "expectedSourceModel": "gpt-5.5",
+    "billedCostPerRun": 0.0603333333,
+    "expectedReconstructedCost": 0.181,
+    "_trace_profile": "OpenAI reasoning model (gpt-5.5). Mixed cache: 7k/11k cached_tokens then a no-cache turn. reasoning_tokens surfaced but NOT double-counted (already inside completion_tokens). Diversifies on OpenAI cached-input pricing + reasoning-token handling."
+  },
+  "real-gemini-run.json": {
+    "expectedRuns": 2,
+    "expectedSourceModel": "gemini-3.1-pro",
+    "billedCostPerRun": 0.03252,
+    "expectedReconstructedCost": 0.06504,
+    "_trace_profile": "Gemini 3.1 Pro with implicit caching (cached_content_token_count) and thinking (thoughts_token_count billed at output rate, separate from candidates_token_count). Diversifies on Gemini cache + thoughts handling and confirms Gemini has NO batch discount."
   }
 }

@@ -403,8 +403,10 @@ function extractRun(
 // clean-parse invariant (Case 1: result.warnings.length === 0) is preserved.
 
 // Concatenate every block where block.type === "text" && typeof block.text === "string".
-// Non-array → "".
+// Non-array → "". Also accepts a plain string (some providers/shapes return content
+// as a string rather than a block array).
 function extractTextFromContent(content: unknown): string {
+  if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   let out = "";
   for (const item of content) {
@@ -416,6 +418,61 @@ function extractTextFromContent(content: unknown): string {
     }
   }
   return out;
+}
+
+// Provider-aware completion-text extraction. Anthropic uses content[].text blocks
+// (handled by extractTextFromContent). OpenAI Chat Completions carries the
+// assistant message under choices[].message.content (a string or a content-array).
+// Gemini GenerateContent carries text under candidates[].content.parts[].text.
+// Falls through to extractTextFromContent(obj.content) for Anthropic / unknown.
+// Pure: pushes NO warnings (clean-parse invariant preserved).
+function extractCompletionText(
+  obj: Record<string, unknown> | undefined,
+  provider: UsageProvider,
+): string {
+  if (!obj) return "";
+  if (provider === "openai") {
+    const choices = obj.choices;
+    if (!Array.isArray(choices)) return "";
+    let out = "";
+    for (const choice of choices) {
+      if (choice && typeof choice === "object") {
+        const msg = (choice as Record<string, unknown>).message;
+        if (msg && typeof msg === "object") {
+          const content = (msg as Record<string, unknown>).content;
+          if (typeof content === "string") {
+            out += content;
+          } else if (Array.isArray(content)) {
+            out += extractTextFromContent(content);
+          }
+        }
+      }
+    }
+    return out;
+  }
+  if (provider === "gemini") {
+    const candidates = obj.candidates;
+    if (!Array.isArray(candidates)) return "";
+    let out = "";
+    for (const cand of candidates) {
+      if (cand && typeof cand === "object") {
+        const content = (cand as Record<string, unknown>).content;
+        if (content && typeof content === "object") {
+          const parts = (content as Record<string, unknown>).parts;
+          if (Array.isArray(parts)) {
+            for (const part of parts) {
+              if (part && typeof part === "object") {
+                const text = (part as Record<string, unknown>).text;
+                if (typeof text === "string") out += text;
+              }
+            }
+          }
+        }
+      }
+    }
+    return out;
+  }
+  return extractTextFromContent(obj.content);
 }
 
 // Phase 2 — prompt-side text capture (docs/RESEARCH-validation-methodology.md §4.3,
@@ -496,7 +553,7 @@ function extractRawCall(
     raw_request: fullObj,
     full_text_content: {
       promptText: "",
-      completionText: extractTextFromContent(content),
+      completionText: extractCompletionText(fullObj, provider),
     },
     call_flags: {
       model,
