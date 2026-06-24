@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint .",
     "test": "vitest run",
+    "test:watch": "vitest",
     "add-fixture": "tsx scripts/add-billed-fixture.ts",
     "replay": "tsx scripts/replay-driver.ts",
     "validate-counterfactual": "tsx scripts/validate-counterfactual.ts"

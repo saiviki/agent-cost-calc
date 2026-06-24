@@ -1029,6 +1029,21 @@ export default function Home() {
           <h1 className="text-2xl font-semibold text-stone-900 tracking-tight">
             Agent Cost Calculator
           </h1>
+          {/* Tab switcher */}
+          <div className="flex items-center gap-2 pt-2">
+            <a
+              href="/"
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-stone-800 text-white"
+            >
+              Cost Estimator
+            </a>
+            <a
+              href="/trace"
+              className="px-4 py-2 text-sm font-medium rounded-lg text-stone-500 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+            >
+              Trace Analyzer
+            </a>
+          </div>
           <p className="text-stone-500 text-sm leading-relaxed max-w-xl">
             Model the real cost of running an AI agent — before you scale.
             Adjust inputs below to see cost per run, per day, and per month.
