@@ -121,35 +121,6 @@ function Chip<T extends string>({
   );
 }
 
-function CostBar({
-  label,
-  value,
-  total,
-  color,
-}: {
-  label: string;
-  value: number;
-  total: number;
-  color: string;
-}) {
-  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-xs text-stone-500">
-        <span>{label}</span>
-        <span className="font-mono">
-          {formatCost(value)} ({pct}%)
-        </span>
-      </div>
-      <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full ${color}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
 
 // Tier accent colors. Static class strings so Tailwind JIT keeps them.
 const TIER_DOT: Record<Tier, string> = {
@@ -1155,7 +1126,6 @@ export default function Home() {
 
   const selectedModel =
     MODELS.find((m) => m.id === config.modelId) ?? MODELS[0];
-  const breakdown = useMemo(() => calculateCost(config), [config]);
 
   const allBreakdowns = useMemo(
     () =>
@@ -1204,270 +1174,162 @@ export default function Home() {
         {/* S4 — Paste a real run (profiler) — sits above the sliders */}
         <TracePanel config={config} onProfiled={(cfg) => setConfig(cfg)} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-          {/* Config Panel */}
-          <div className="lg:col-span-3 space-y-8">
-            {/* Model selector + filters */}
-            <section className="space-y-3">
-              <div className="flex items-baseline justify-between">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                  Model
-                </h2>
-                <span className="text-xs text-stone-400">
-                  {filteredModels.length} of {MODELS.length}
-                </span>
-              </div>
-
-              {/* Filter rows */}
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
-                    Tier
-                  </span>
-                  {TIERS.map((t) => (
-                    <Chip
-                      key={t}
-                      label={TIER_LABEL[t]}
-                      active={tierFilter.has(t)}
-                      onToggle={() =>
-                        setTierFilter(toggleSet(tierFilter, t))
-                      }
-                    />
-                  ))}
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
-                    Type
-                  </span>
-                  {(["closed", "open"] as const).map((t) => (
-                    <Chip
-                      key={t}
-                      label={t === "closed" ? "Closed" : "Open-weights"}
-                      active={typeFilter.has(t)}
-                      onToggle={() =>
-                        setTypeFilter(toggleSet(typeFilter, t))
-                      }
-                    />
-                  ))}
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
-                    Strength
-                  </span>
-                  {STRENGTHS.map((s) => (
-                    <Chip
-                      key={s}
-                      label={STRENGTH_LABEL[s]}
-                      active={strengthFilter.has(s)}
-                      onToggle={() =>
-                        setStrengthFilter(toggleSet(strengthFilter, s))
-                      }
-                    />
-                  ))}
-                </div>
-                {activeFilterCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTierFilter(new Set());
-                      setTypeFilter(new Set());
-                      setStrengthFilter(new Set());
-                    }}
-                    className="text-xs text-stone-400 hover:text-stone-700 underline underline-offset-2"
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </div>
-
-              {/* Model table — replaces the old picker grid + comparison list.
-                  One UI: filtered models sorted cheapest-first, click a row to
-                  select it. Tier-colored accents + strength pills. */}
-              <ModelTable
-                rows={allBreakdowns}
-                maxCost={maxCost}
-                selectedId={config.modelId}
-                onSelect={(id) => set("modelId", id)}
-              />
-            </section>
-
-            {/* Token inputs */}
-            <section className="space-y-5">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                Token Profile
-              </h2>
-              <Slider
-                label="System prompt / context"
-                value={config.systemPromptTokens}
-                min={0}
-                max={32000}
-                step={500}
-                onChange={(v) => set("systemPromptTokens", v)}
-                format={(v) => `${v.toLocaleString()} tokens`}
-                hint="Usually cached — docs, instructions, retrieved context"
-              />
-              <Slider
-                label="Input per run"
-                value={config.inputTokensPerRun}
-                min={100}
-                max={16000}
-                step={100}
-                onChange={(v) => set("inputTokensPerRun", v)}
-                format={(v) => `${v.toLocaleString()} tokens`}
-                hint="User message + any per-run dynamic context"
-              />
-              <Slider
-                label="Output per run"
-                value={config.outputTokensPerRun}
-                min={50}
-                max={8000}
-                step={50}
-                onChange={(v) => set("outputTokensPerRun", v)}
-                format={(v) => `${v.toLocaleString()} tokens`}
-              />
-            </section>
-
-            {/* Tool calls */}
-            <section className="space-y-5">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                Tool Calls
-              </h2>
-              <Slider
-                label="Tool calls per run"
-                value={config.toolCallsPerRun}
-                min={0}
-                max={20}
-                step={1}
-                onChange={(v) => set("toolCallsPerRun", v)}
-                format={(v) => `${v} calls`}
-                hint="Each call adds an extra input + output round"
-              />
-              <Slider
-                label="Tokens per tool call"
-                value={config.tokensPerToolCall}
-                min={50}
-                max={2000}
-                step={50}
-                onChange={(v) => set("tokensPerToolCall", v)}
-                format={(v) => `${v} tokens avg`}
-              />
-            </section>
-
-            {/* Cache */}
+                {/* A+B layout: compact config bar ABOVE the table, then full-width
+            model table. The old right-side Cost Estimate + Breakdown panel is
+            dropped — per-run cost lives in the table's "Cost / run" column.
+            ponytail: per-day/per-month + breakdown removed to match the
+            prototype; re-add a compact summary line if aggregate totals wanted. */}
+        <section className="bg-white border border-stone-200 rounded-xl p-5">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-4">
+            Cost inputs
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-5">
+            <Slider
+              label="System prompt"
+              value={config.systemPromptTokens}
+              min={0}
+              max={32000}
+              step={500}
+              onChange={(v) => set("systemPromptTokens", v)}
+              format={(v) => `${v.toLocaleString()} tok`}
+            />
+            <Slider
+              label="Input / run"
+              value={config.inputTokensPerRun}
+              min={100}
+              max={16000}
+              step={100}
+              onChange={(v) => set("inputTokensPerRun", v)}
+              format={(v) => `${v.toLocaleString()} tok`}
+            />
+            <Slider
+              label="Output / run"
+              value={config.outputTokensPerRun}
+              min={50}
+              max={8000}
+              step={50}
+              onChange={(v) => set("outputTokensPerRun", v)}
+              format={(v) => `${v.toLocaleString()} tok`}
+            />
+            <Slider
+              label="Tool calls / run"
+              value={config.toolCallsPerRun}
+              min={0}
+              max={20}
+              step={1}
+              onChange={(v) => set("toolCallsPerRun", v)}
+              format={(v) => `${v}`}
+            />
+            <Slider
+              label="Tokens / tool call"
+              value={config.tokensPerToolCall}
+              min={50}
+              max={2000}
+              step={50}
+              onChange={(v) => set("tokensPerToolCall", v)}
+              format={(v) => `${v.toLocaleString()}`}
+            />
+            <Slider
+              label="Runs / day"
+              value={config.runsPerDay}
+              min={1}
+              max={10000}
+              step={10}
+              onChange={(v) => set("runsPerDay", v)}
+              format={(v) => v.toLocaleString()}
+            />
             {selectedModel.supportsCache && (
-              <section className="space-y-5">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                  Prompt Caching
-                </h2>
-                <Slider
-                  label="Cache hit rate"
-                  value={config.cacheHitRate}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  onChange={(v) => set("cacheHitRate", v)}
-                  format={(v) => `${Math.round(v * 100)}%`}
-                  hint="How often the system prompt is served from cache"
-                />
-              </section>
-            )}
-
-            {/* Volume */}
-            <section className="space-y-5">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                Volume
-              </h2>
               <Slider
-                label="Runs per day"
-                value={config.runsPerDay}
-                min={1}
-                max={10000}
-                step={10}
-                onChange={(v) => set("runsPerDay", v)}
-                format={(v) => v.toLocaleString()}
+                label="Cache hit rate"
+                value={config.cacheHitRate}
+                min={0}
+                max={1}
+                step={0.05}
+                onChange={(v) => set("cacheHitRate", v)}
+                format={(v) => `${Math.round(v * 100)}%`}
               />
-            </section>
+            )}
+          </div>
+        </section>
+
+        {/* Model selector + filters + full-width table */}
+        <section className="space-y-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
+              Models
+            </h2>
+            <span className="text-xs text-stone-400">
+              {filteredModels.length} of {MODELS.length}
+            </span>
           </div>
 
-          {/* Results Panel */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Cost summary */}
-            <div className="bg-white border border-stone-200 rounded-xl p-5 space-y-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                Cost Estimate
-              </h2>
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-stone-500">Per run</span>
-                  <span className="text-xl font-semibold font-mono text-stone-900">
-                    {formatCost(breakdown.totalPerRun)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-stone-500">Per day</span>
-                  <span className="text-base font-mono text-stone-700">
-                    {formatCost(breakdown.totalPerDay)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-stone-500">Per month</span>
-                  <span className="text-base font-mono text-stone-700">
-                    {formatCost(breakdown.totalPerMonth)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-stone-100 space-y-3">
-                <p className="text-xs text-stone-400 uppercase tracking-wider font-semibold">
-                  Breakdown
-                </p>
-                <CostBar
-                  label="Uncached input"
-                  value={breakdown.inputCost}
-                  total={breakdown.totalPerRun}
-                  color="bg-stone-700"
+          {/* Filter rows */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
+                Tier
+              </span>
+              {TIERS.map((t) => (
+                <Chip
+                  key={t}
+                  label={TIER_LABEL[t]}
+                  active={tierFilter.has(t)}
+                  onToggle={() => setTierFilter(toggleSet(tierFilter, t))}
                 />
-                {selectedModel.supportsCache && (
-                  <>
-                    <CostBar
-                      label="Cached reads"
-                      value={breakdown.cachedInputCost}
-                      total={breakdown.totalPerRun}
-                      color="bg-stone-400"
-                    />
-                    <CostBar
-                      label="Cache writes"
-                      value={breakdown.cacheWriteCost}
-                      total={breakdown.totalPerRun}
-                      color="bg-stone-300"
-                    />
-                  </>
-                )}
-                <CostBar
-                  label="Output"
-                  value={breakdown.outputCost}
-                  total={breakdown.totalPerRun}
-                  color="bg-amber-500"
-                />
-                <CostBar
-                  label="Tool calls"
-                  value={breakdown.toolCallCost}
-                  total={breakdown.totalPerRun}
-                  color="bg-blue-400"
-                />
-              </div>
-
-              <p className="text-xs text-stone-400 pt-1">
-                Prices fetched {PRICING_FETCHED_AT.slice(0, 10)} from OpenRouter — verify against provider docs before scaling.
-              </p>
+              ))}
             </div>
-
-            {/* The model comparison list used to live here. It's been merged
-                into the ModelTable above the sliders — one unified UI that
-                serves as both picker and comparison. */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
+                Type
+              </span>
+              {(["closed", "open"] as const).map((t) => (
+                <Chip
+                  key={t}
+                  label={t === "closed" ? "Closed" : "Open-weights"}
+                  active={typeFilter.has(t)}
+                  onToggle={() => setTypeFilter(toggleSet(typeFilter, t))}
+                />
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
+                Strength
+              </span>
+              {STRENGTHS.map((s) => (
+                <Chip
+                  key={s}
+                  label={STRENGTH_LABEL[s]}
+                  active={strengthFilter.has(s)}
+                  onToggle={() =>
+                    setStrengthFilter(toggleSet(strengthFilter, s))
+                  }
+                />
+              ))}
+            </div>
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTierFilter(new Set());
+                  setTypeFilter(new Set());
+                  setStrengthFilter(new Set());
+                }}
+                className="text-xs text-stone-400 hover:text-stone-700 underline underline-offset-2"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
-        </div>
+
+          {/* Model table — filtered models sorted cheapest-first, click a row
+              to select it. Tier-colored accents + strength pills. */}
+          <ModelTable
+            rows={allBreakdowns}
+            maxCost={maxCost}
+            selectedId={config.modelId}
+            onSelect={(id) => set("modelId", id)}
+          />
+        </section>
 
         {/* Footer */}
         <footer className="border-t border-stone-200 mt-8 pt-5 pb-3">
