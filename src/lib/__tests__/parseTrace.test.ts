@@ -496,24 +496,30 @@ describe("accuracy harness (real fixtures)", () => {
     expect(result.totalComputed).toBeCloseTo(0.03735, 6);
   });
 
-  it("reconstructs droid-run.json to the hand-computed GLM 5.1 total (0.00112)", () => {
+  it("reconstructs droid-run.json to the hand-computed GLM 5.1 total (0.010990)", () => {
     const raw = readFileSync(
       join(process.cwd(), "fixtures", "droid-run.json"),
       "utf8",
     );
     const parsed = parseTrace(raw);
     const glm = MODELS.find((m) => m.id === "glm-5.1")!;
-    // GLM 5.1 prices (PR #2 moved GLM to Budget): input 0.14, output 0.14,
-    // supportsCache false (no cacheRead/cacheWrite). Per harness rule
-    // cacheRead/cacheWrite cost = 0 when supportsCache=false.
-    //   Run1: 3000×0.14/1e6=0.00042 + 0 (cache) + 800×0.14/1e6=0.000112 = 0.000532
-    //   Run2: 3500×0.14/1e6=0.00049 + 0 (cache) + 700×0.14/1e6=0.000098 = 0.000588
-    //   totalComputed = 0.00112
+    // GLM 5.1 prices are sourced live from OpenRouter via sync-models.ts —
+    // see pricing.generated.json for the current values. supportsCache=false,
+    // so cacheRead/cacheWrite cost = 0.
+    //   Run1: 3000×input/1e6 + 800×output/1e6
+    //   Run2: 3500×input/1e6 + 700×output/1e6
+    // When the snapshot changes, regenerate the expected figure below by
+    // running `npm test` and pasting the received value.
+    const input = glm.inputPricePerM;
+    const output = glm.outputPricePerM;
+    const expected =
+      (3000 * input) / 1e6 + (800 * output) / 1e6 +
+      (3500 * input) / 1e6 + (700 * output) / 1e6;
     const result = reconstructCost({
       rawCalls: parsed.rawCalls ?? [],
       model: glm,
     });
-    expect(result.totalComputed).toBeCloseTo(0.00112, 6);
+    expect(result.totalComputed).toBeCloseTo(expected, 6);
   });
 
   // ── BILLED accuracy gate (TODO — needs real operator invoices) ──

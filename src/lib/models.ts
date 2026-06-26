@@ -50,351 +50,96 @@ export type Model = {
   capability?: ModelCapability;
 };
 
-// S1 — multiplierSource string convention (SPEC-effective-cost.md §1.3)
-const AA_SOURCE = "Artificial Analysis Intelligence Index v4.0 — confirmed 2026-05-30";
+// ─────────────────────────────────────────────────────────────────────────────
+// Data pipeline — two layers (see scripts/model-catalog.ts):
+//   1. pricing.generated.json : machine-truthable, written by sync-models.ts
+//      from OpenRouter's /api/v1/models. Pricing, context window, provider.
+//   2. Editorial catalog      : human judgment. Tier, strengths, outputMultiplier,
+//      capability scores. Lives in scripts/model-catalog.ts.
+// MODELS merges both at module load: editorial wins for judgment fields,
+// generated wins for volatile fields. Update pricing via `npm run sync-models`.
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Pricing verified 2026-05-09 against OpenRouter's unified pricing API
-// (openrouter.ai/api/v1/models — ground-truth across 100+ providers)
-// + Anthropic docs.claude.com + Google ai.google.dev.
-//
-// Lineup is curated from OpenRouter's real-usage top-20 (production traffic)
-// + Artificial Analysis intelligence index, NOT just "newest."
-//
-// Anthropic prompt-caching: cache_read = 0.1 × input, cache_write_5min = 1.25 × input.
-// OpenAI cached input: GPT-5.x family ≈ 0.1 × input.
-// Open-model cache pricing varies by host (figures here = OpenRouter median).
-export const MODELS: Model[] = [
-  // ── FRONTIER ──
-  {
-    id: "claude-opus-4-7",
-    name: "Claude Opus 4.7",
-    provider: "Anthropic",
-    isOpen: false,
-    tier: "frontier",
-    strengths: ["coding", "reasoning"],
-    contextK: 1000,
-    inputPricePerM: 5.0,
-    outputPricePerM: 25.0,
-    cacheReadPricePerM: 0.50,
-    cacheWritePricePerM: 6.25,
-    supportsCache: true,
-    outputMultiplier: 7.9,
-    multiplierSource: AA_SOURCE + " — adaptive reasoning, max",
-    multiplierConfidence: "high",
-    capability: {
-      scores: { coding: 92, reasoning: 90, general: 88 },
-      confidence: { coding: "high", reasoning: "high", general: "high" },
-    },
-  },
-  {
-    id: "claude-sonnet-4-6",
-    name: "Claude Sonnet 4.6",
-    provider: "Anthropic",
-    isOpen: false,
-    tier: "frontier",
-    strengths: ["coding", "general"],
-    contextK: 1000,
-    inputPricePerM: 3.0,
-    outputPricePerM: 15.0,
-    cacheReadPricePerM: 0.30,
-    cacheWritePricePerM: 3.75,
-    supportsCache: true,
-    outputMultiplier: 1.0,
-    multiplierSource: AA_SOURCE + " — non-reasoning (baseline)",
-    multiplierConfidence: "high",
-    capability: {
-      scores: { coding: 85, reasoning: 74, general: 82 },
-      confidence: { coding: "high", reasoning: "high", general: "high" },
-    },
-  },
-  {
-    id: "gpt-5.5",
-    name: "GPT-5.5",
-    provider: "OpenAI",
-    isOpen: false,
-    tier: "frontier",
-    strengths: ["reasoning"],
-    contextK: 1050,
-    inputPricePerM: 5.0,
-    outputPricePerM: 30.0,
-    cacheReadPricePerM: 0.50,
-    supportsCache: true,
-    outputMultiplier: 5.4,
-    multiplierSource: AA_SOURCE + " — xhigh reasoning effort",
-    multiplierConfidence: "high",
-    capability: {
-      scores: { coding: 91, reasoning: 91, general: 90 },
-      confidence: { coding: "high", reasoning: "high", general: "high" },
-    },
-  },
-  {
-    id: "gemini-3.1-pro",
-    name: "Gemini 3.1 Pro",
-    provider: "Google",
-    isOpen: false,
-    tier: "frontier",
-    strengths: ["multimodal", "long-context", "reasoning"],
-    contextK: 1048,
-    inputPricePerM: 2.0,
-    outputPricePerM: 12.0,
-    cacheReadPricePerM: 0.20,
-    supportsCache: true,
-    outputMultiplier: 4.1,
-    multiplierSource: AA_SOURCE + " — reasoning preview (default)",
-    multiplierConfidence: "high",
-    capability: {
-      scores: { coding: 85, reasoning: 92, general: 87 },
-      confidence: { coding: "high", reasoning: "high", general: "high" },
-    },
-  },
-  {
-    id: "deepseek-v4-pro",
-    name: "DeepSeek V4 Pro",
-    provider: "DeepSeek",
-    isOpen: true,
-    tier: "frontier",
-    strengths: ["reasoning", "coding"],
-    contextK: 1048,
-    inputPricePerM: 0.435,
-    outputPricePerM: 0.870,
-    cacheReadPricePerM: 0.0036,
-    supportsCache: true,
-    outputMultiplier: 13.6,
-    multiplierSource: AA_SOURCE + " — reasoning, max effort",
-    multiplierConfidence: "high",
-    capability: {
-      scores: { coding: 88, reasoning: 82, general: 78 },
-      confidence: { coding: "high", reasoning: "high", general: "med" },
-    },
-  },
-  {
-    id: "kimi-k2.6",
-    name: "Kimi K2.6",
-    provider: "Moonshot",
-    isOpen: true,
-    tier: "frontier",
-    strengths: ["reasoning", "long-context"],
-    contextK: 262,
-    inputPricePerM: 0.75,
-    outputPricePerM: 3.50,
-    cacheReadPricePerM: 0.15,
-    supportsCache: true,
-    outputMultiplier: 12.1,
-    multiplierSource: AA_SOURCE + " — always-on reasoning (default)",
-    multiplierConfidence: "high",
-    capability: {
-      scores: { coding: 84, reasoning: 80, general: 75 },
-      confidence: { coding: "high", reasoning: "high", general: "med" },
-    },
-  },
-  // ── MID ──
-  {
-    id: "claude-haiku-4-5",
-    name: "Claude Haiku 4.5",
-    provider: "Anthropic",
-    isOpen: false,
-    tier: "mid",
-    strengths: ["fast", "coding"],
-    contextK: 200,
-    inputPricePerM: 1.0,
-    outputPricePerM: 5.0,
-    cacheReadPricePerM: 0.10,
-    cacheWritePricePerM: 1.25,
-    supportsCache: true,
-    outputMultiplier: 0.59,
-    multiplierSource: AA_SOURCE + " — non-reasoning",
-    multiplierConfidence: "high",
-    // coding=50 reflects non-reasoning mode only (consistent with outputMultiplier=0.59).
-    // High-reasoning mode reaches 67% but is NOT the priced deployment mode.
-    capability: {
-      scores: { coding: 50, reasoning: 58, general: 65 },
-      confidence: { coding: "med", reasoning: "med", general: "med" },
-    },
-  },
-  {
-    id: "gpt-5.4-mini",
-    name: "GPT-5.4 mini",
-    provider: "OpenAI",
-    isOpen: false,
-    tier: "mid",
-    strengths: ["fast", "general"],
-    contextK: 400,
-    inputPricePerM: 0.75,
-    outputPricePerM: 4.50,
-    cacheReadPricePerM: 0.075,
-    supportsCache: true,
-    outputMultiplier: 0.17,
-    multiplierSource: AA_SOURCE + " — non-reasoning (default)",
-    multiplierConfidence: "high",
-    // coding=66 is a conservative estimate — BenchLM flags insufficient overlapping
-    // benchmark coverage (confidence: low on coding).
-    capability: {
-      scores: { coding: 66, reasoning: 60, general: 70 },
-      confidence: { coding: "low", reasoning: "med", general: "med" },
-    },
-  },
-  {
-    id: "gemini-3-flash",
-    name: "Gemini 3 Flash",
-    provider: "Google",
-    isOpen: false,
-    tier: "mid",
-    strengths: ["multimodal", "fast", "long-context"],
-    contextK: 1048,
-    inputPricePerM: 0.50,
-    outputPricePerM: 3.0,
-    cacheReadPricePerM: 0.05,
-    supportsCache: true,
-    outputMultiplier: 5.1,
-    multiplierSource: AA_SOURCE + " — reasoning (default)",
-    multiplierConfidence: "high",
-    capability: {
-      scores: { coding: 72, reasoning: 70, general: 72 },
-      confidence: { coding: "high", reasoning: "med", general: "med" },
-    },
-  },
-  {
-    id: "grok-4.1-fast",
-    name: "Grok 4.1 Fast",
-    provider: "xAI",
-    isOpen: false,
-    tier: "mid",
-    strengths: ["long-context", "fast"],
-    contextK: 2000,
-    inputPricePerM: 0.20,
-    outputPricePerM: 0.50,
-    cacheReadPricePerM: 0.05,
-    supportsCache: true,
-    outputMultiplier: 0.31,
-    multiplierSource: AA_SOURCE + " — non-reasoning, fast variant",
-    multiplierConfidence: "high",
-    // coding is the known weak dimension (#44/117 in BenchLM).
-    capability: {
-      scores: { coding: 58, reasoning: 68, general: 65 },
-      confidence: { coding: "med", reasoning: "med", general: "med" },
-    },
-  },
-  {
-    id: "qwen-3.6-plus",
-    name: "Qwen 3.6 Plus",
-    provider: "Alibaba",
-    isOpen: true,
-    tier: "mid",
-    strengths: ["coding", "general"],
-    contextK: 1000,
-    inputPricePerM: 0.325,
-    outputPricePerM: 1.95,
-    supportsCache: false,
-    outputMultiplier: 7.1,
-    multiplierSource: AA_SOURCE + " — reasoning (default); variant mixing on AA",
-    multiplierConfidence: "med",
-    capability: {
-      scores: { coding: 78, reasoning: 76, general: 73 },
-      confidence: { coding: "high", reasoning: "high", general: "med" },
-    },
-  },
-  // ── BUDGET ──
-  {
-    id: "glm-5.1",
-    name: "GLM 5.1",
-    provider: "Z.ai",
-    isOpen: true,
-    tier: "budget",
-    strengths: ["coding", "long-context"],
-    contextK: 128,
-    inputPricePerM: 0.14,
-    outputPricePerM: 0.14,
-    supportsCache: false,
-    outputMultiplier: 1.0,
-    multiplierSource: "placeholder: no reasoning-mode data on Artificial Analysis (2026-05-30)",
-    multiplierConfidence: "low",
-    capability: {
-      scores: { coding: 72, reasoning: 68, general: 65 },
-      confidence: { coding: "med", reasoning: "med", general: "low" },
-    },
-  },
-  {
-    id: "deepseek-v4-flash",
-    name: "DeepSeek V4 Flash",
-    provider: "DeepSeek",
-    isOpen: true,
-    tier: "budget",
-    strengths: ["fast", "general"],
-    contextK: 1048,
-    inputPricePerM: 0.14,
-    outputPricePerM: 0.28,
-    cacheReadPricePerM: 0.0028,
-    supportsCache: true,
-    outputMultiplier: 17.1,
-    multiplierSource: AA_SOURCE + " — reasoning, max effort",
-    multiplierConfidence: "high",
-    // coding=68 = default deployment only (non-extended-thinking). Max-effort reaches
-    // near-parity with V4 Pro but that token burn is captured by outputMultiplier=17.1.
-    capability: {
-      scores: { coding: 68, reasoning: 62, general: 58 },
-      confidence: { coding: "med", reasoning: "med", general: "med" },
-    },
-  },
-  {
-    id: "llama-3.3-70b",
-    name: "Llama 3.3 70B",
-    provider: "Meta",
-    isOpen: true,
-    tier: "budget",
-    strengths: ["general"],
-    contextK: 131,
-    inputPricePerM: 0.10,
-    outputPricePerM: 0.32,
-    supportsCache: false,
-    outputMultiplier: 0.27,
-    multiplierSource: AA_SOURCE + " — non-reasoning",
-    multiplierConfidence: "med",
-    capability: {
-      scores: { coding: 52, reasoning: 48, general: 55 },
-      confidence: { coding: "med", reasoning: "med", general: "med" },
-    },
-  },
-  {
-    id: "minimax-m2.7",
-    name: "MiniMax M2.7",
-    provider: "MiniMax",
-    isOpen: true,
-    tier: "budget",
-    strengths: ["general"],
-    contextK: 196,
-    inputPricePerM: 0.30,
-    outputPricePerM: 1.20,
-    supportsCache: false,
-    outputMultiplier: 6.2,
-    multiplierSource: AA_SOURCE + " — reasoning (default)",
-    multiplierConfidence: "high",
-    capability: {
-      scores: { coding: 58, reasoning: 55, general: 56 },
-      confidence: { coding: "med", reasoning: "med", general: "med" },
-    },
-  },
-  {
-    id: "mistral-large-2",
-    name: "Mistral Large 2",
-    provider: "Mistral",
-    isOpen: true,
-    tier: "budget",
-    strengths: ["general"],
-    contextK: 262,
-    inputPricePerM: 0.50,
-    outputPricePerM: 1.50,
-    cacheReadPricePerM: 0.05,
-    supportsCache: true,
-    outputMultiplier: 0.19,
-    multiplierSource: AA_SOURCE + " — non-reasoning",
-    multiplierConfidence: "high",
-    // benchmarks are 2024-vintage, scored against 2026 competition → budget tier.
-    capability: {
-      scores: { coding: 60, reasoning: 52, general: 60 },
-      confidence: { coding: "med", reasoning: "med", general: "med" },
-    },
-  },
-];
+type GeneratedPricingEntry = {
+  id: string;
+  openrouterSlug: string;
+  name: string;
+  provider: string;
+  isOpen: boolean;
+  contextK: number;
+  inputPricePerM: number;
+  outputPricePerM: number;
+  cacheReadPricePerM?: number;
+  cacheWritePricePerM?: number;
+  supportsCache: boolean;
+};
+
+import generatedPricing from "./pricing.generated.json";
+import { EDITORIAL_CATALOG, type EditorialEntry } from "../../scripts/model-catalog";
+
+const PRICING_SNAPSHOT = generatedPricing as {
+  source: string;
+  fetchedAt: string;
+  openRouterEndpoint: string;
+  models: GeneratedPricingEntry[];
+};
+
+const PRICING_BY_ID = new Map<string, GeneratedPricingEntry>(
+  PRICING_SNAPSHOT.models.map((m) => [m.id, m]),
+);
+
+function buildModels(): Model[] {
+  return EDITORIAL_CATALOG.map((entry: EditorialEntry): Model => {
+    const gen = PRICING_BY_ID.get(entry.id);
+    if (!gen) {
+      // The editorial catalog lists a model that isn't in pricing.generated.json.
+      // This happens when sync-models.ts is run with --allow-missing (e.g. a
+      // vendor slug temporarily isn't listed on OpenRouter). Fall back to safe
+      // defaults so the app keeps rendering; the cost engine will still run but
+      // pricing will be visibly zero until the model is re-synced.
+      return {
+        id: entry.id,
+        name: entry.id,
+        provider: "Unknown",
+        isOpen: false,
+        tier: entry.tier,
+        strengths: entry.strengths,
+        contextK: 0,
+        inputPricePerM: 0,
+        outputPricePerM: 0,
+        supportsCache: false,
+        outputMultiplier: entry.outputMultiplier,
+        multiplierSource: entry.multiplierSource,
+        multiplierConfidence: entry.multiplierConfidence,
+        capability: entry.capability,
+      };
+    }
+    return {
+      id: entry.id,
+      name: gen.name,
+      provider: gen.provider,
+      isOpen: gen.isOpen,
+      tier: entry.tier,
+      strengths: entry.strengths,
+      contextK: gen.contextK,
+      inputPricePerM: gen.inputPricePerM,
+      outputPricePerM: gen.outputPricePerM,
+      cacheReadPricePerM: gen.cacheReadPricePerM,
+      cacheWritePricePerM: gen.cacheWritePricePerM,
+      supportsCache: gen.supportsCache,
+      outputMultiplier: entry.outputMultiplier,
+      multiplierSource: entry.multiplierSource,
+      multiplierConfidence: entry.multiplierConfidence,
+      capability: entry.capability,
+    };
+  });
+}
+
+export const MODELS: Model[] = buildModels();
+
+// Exposed for diagnostics / the sync report. Not used by the cost engine.
+export const PRICING_FETCHED_AT: string = PRICING_SNAPSHOT.fetchedAt;
+export const PRICING_SOURCE: string = PRICING_SNAPSHOT.source;
 
 export const TIER_LABEL: Record<Tier, string> = {
   frontier: "Frontier",

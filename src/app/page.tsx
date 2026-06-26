@@ -8,9 +8,12 @@ import {
   filterModels,
   calculateCost,
   formatCost,
+  PRICING_FETCHED_AT,
   type AgentConfig,
   type Tier,
   type Strength,
+  type Model,
+  type CostBreakdown,
 } from "@/lib/models";
 import {
   parseTrace,
@@ -144,6 +147,154 @@ function CostBar({
           style={{ width: `${pct}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+// Tier accent colors. Static class strings so Tailwind JIT keeps them.
+const TIER_DOT: Record<Tier, string> = {
+  frontier: "bg-indigo-500",
+  mid: "bg-emerald-500",
+  budget: "bg-amber-500",
+};
+const TIER_BAR: Record<Tier, string> = {
+  frontier: "bg-indigo-500",
+  mid: "bg-emerald-500",
+  budget: "bg-amber-500",
+};
+const TIER_SELECTED_ROW: Record<Tier, string> = {
+  frontier: "bg-indigo-50",
+  mid: "bg-emerald-50",
+  budget: "bg-amber-50",
+};
+
+type ModelRow = { model: Model; cost: CostBreakdown };
+
+function ModelTable({
+  rows,
+  maxCost,
+  selectedId,
+  onSelect,
+}: {
+  rows: ModelRow[];
+  maxCost: number;
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="text-sm text-stone-400 italic py-4 text-center border border-dashed border-stone-200 rounded-lg">
+        No models match these filters.
+      </div>
+    );
+  }
+  return (
+    <div className="border border-stone-200 rounded-xl overflow-hidden bg-white">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-stone-50 border-b border-stone-200">
+            <th className="text-left text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-3 py-2.5">
+              Model
+            </th>
+            <th className="text-left text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-3 py-2.5 hidden sm:table-cell">
+              Strengths
+            </th>
+            <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-3 py-2.5 hidden md:table-cell">
+              Price /M
+            </th>
+            <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-3 py-2.5 hidden md:table-cell">
+              Ctx
+            </th>
+            <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-3 py-2.5 w-[30%] min-w-[140px]">
+              Cost / run
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ model, cost }) => {
+            const selected = model.id === selectedId;
+            const pct = maxCost > 0 ? (cost.totalPerRun / maxCost) * 100 : 0;
+            return (
+              <tr
+                key={model.id}
+                onClick={() => onSelect(model.id)}
+                className={`cursor-pointer border-b border-stone-100 last:border-0 transition-colors ${
+                  selected
+                    ? TIER_SELECTED_ROW[model.tier]
+                    : "hover:bg-stone-50"
+                }`}
+              >
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`w-[3px] h-8 rounded-full ${TIER_BAR[model.tier]} ${
+                        selected ? "opacity-100" : "opacity-40"
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`font-medium truncate ${
+                            selected ? "text-stone-900" : "text-stone-800"
+                          }`}
+                        >
+                          {model.name}
+                        </span>
+                        {model.isOpen && (
+                          <span className="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                            open
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-stone-400 flex items-center gap-1.5">
+                        <span
+                          className={`inline-block w-1.5 h-1.5 rounded-full ${TIER_DOT[model.tier]}`}
+                        />
+                        {TIER_LABEL[model.tier]} · {model.provider}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 hidden sm:table-cell">
+                  <div className="flex flex-wrap gap-1">
+                    {model.strengths.slice(0, 3).map((s) => (
+                      <span
+                        key={s}
+                        className="text-[10px] px-1.5 py-0.5 rounded-full border border-stone-200 text-stone-500 capitalize"
+                      >
+                        {STRENGTH_LABEL[s]}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs text-stone-500 hidden md:table-cell">
+                  ${model.inputPricePerM}·${model.outputPricePerM}
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs text-stone-500 hidden md:table-cell">
+                  {model.contextK}K
+                </td>
+                <td className="px-3 py-2.5 pr-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-mono text-xs whitespace-nowrap ml-auto ${
+                        selected ? "font-semibold text-stone-900" : "text-stone-600"
+                      }`}
+                    >
+                      {formatCost(cost.totalPerRun)}
+                    </span>
+                  </div>
+                  <div className="h-1 bg-stone-100 rounded-full overflow-hidden mt-1">
+                    <div
+                      className={`h-full rounded-full ${TIER_BAR[model.tier]}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -1129,51 +1280,15 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Filtered grid */}
-              {filteredModels.length === 0 ? (
-                <div className="text-sm text-stone-400 italic py-4 text-center border border-dashed border-stone-200 rounded-lg">
-                  No models match these filters.
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {filteredModels.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => set("modelId", m.id)}
-                      className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${
-                        config.modelId === m.id
-                          ? "border-stone-800 bg-stone-800 text-white"
-                          : "border-stone-200 bg-white text-stone-700 hover:border-stone-300"
-                      }`}
-                      type="button"
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-medium">{m.name}</span>
-                        {m.isOpen && (
-                          <span
-                            className={`text-[9px] uppercase tracking-wider px-1 py-0.5 rounded ${
-                              config.modelId === m.id
-                                ? "bg-stone-700 text-stone-300"
-                                : "bg-stone-100 text-stone-500"
-                            }`}
-                          >
-                            open
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        className={`text-xs mt-0.5 ${
-                          config.modelId === m.id
-                            ? "text-stone-300"
-                            : "text-stone-400"
-                        }`}
-                      >
-                        {m.provider} · ${m.inputPricePerM}/${m.outputPricePerM}/M
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Model table — replaces the old picker grid + comparison list.
+                  One UI: filtered models sorted cheapest-first, click a row to
+                  select it. Tier-colored accents + strength pills. */}
+              <ModelTable
+                rows={allBreakdowns}
+                maxCost={maxCost}
+                selectedId={config.modelId}
+                onSelect={(id) => set("modelId", id)}
+              />
             </section>
 
             {/* Token inputs */}
@@ -1343,79 +1458,42 @@ export default function Home() {
                 />
               </div>
 
-              <p className="text-xs text-stone-300 pt-1">
-                Prices verified May 2026 — verify against provider docs before scaling.
+              <p className="text-xs text-stone-400 pt-1">
+                Prices fetched {PRICING_FETCHED_AT.slice(0, 10)} from OpenRouter — verify against provider docs before scaling.
               </p>
             </div>
 
-            {/* Model comparison */}
-            <div className="bg-white border border-stone-200 rounded-xl p-5 space-y-4">
-              <div className="flex items-baseline justify-between">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                  Comparison
-                </h2>
-                <span className="text-[10px] text-stone-400">
-                  same config · cheapest first
-                </span>
-              </div>
-              {allBreakdowns.length === 0 ? (
-                <p className="text-xs text-stone-400 italic">
-                  Adjust filters above to compare.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {allBreakdowns.map(({ model, cost }) => (
-                    <div key={model.id} className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span
-                          className={
-                            model.id === config.modelId
-                              ? "font-semibold text-stone-900"
-                              : "text-stone-500"
-                          }
-                        >
-                          {model.name}
-                          {model.isOpen && (
-                            <span className="ml-1 text-[9px] uppercase tracking-wider text-stone-400">
-                              open
-                            </span>
-                          )}
-                        </span>
-                        <span className="font-mono text-stone-700">
-                          {formatCost(cost.totalPerRun)}/run
-                        </span>
-                      </div>
-                      <div className="h-1 bg-stone-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${
-                            model.id === config.modelId
-                              ? "bg-stone-800"
-                              : "bg-stone-300"
-                          }`}
-                          style={{
-                            width: `${maxCost > 0 ? (cost.totalPerRun / maxCost) * 100 : 0}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* The model comparison list used to live here. It's been merged
+                into the ModelTable above the sliders — one unified UI that
+                serves as both picker and comparison. */}
           </div>
         </div>
 
         {/* Footer */}
-        <div className="text-center text-xs text-stone-300 pt-4">
-          Built by{" "}
-          <a
-            href="https://github.com/saiviki"
-            className="underline underline-offset-2 hover:text-stone-500"
-          >
-            Sai Viki
-          </a>{" "}
-          · Pricing via OpenRouter + provider docs · Lineup curated from real-usage rankings
-        </div>
+        <footer className="border-t border-stone-200 mt-8 pt-5 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+            <p className="text-stone-600">
+              Built by{" "}
+              <a
+                href="https://github.com/saiviki"
+                className="font-medium text-stone-800 underline underline-offset-2 hover:text-stone-900"
+              >
+                Sairam
+              </a>{" "}
+              <span className="text-stone-400">·</span>{" "}
+              <span className="text-stone-500">
+                Pricing via OpenRouter + provider docs
+              </span>{" "}
+              <span className="text-stone-400">·</span>{" "}
+              <span className="text-stone-500">
+                Lineup curated from real-usage rankings
+              </span>
+            </p>
+            <p className="text-stone-400">
+              Prices fetched {PRICING_FETCHED_AT.slice(0, 10)} from OpenRouter
+            </p>
+          </div>
+        </footer>
       </div>
     </main>
   );

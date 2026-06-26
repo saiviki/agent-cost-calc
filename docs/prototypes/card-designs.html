@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Model card prototypes — Agent Cost Calculator</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --fg: #1c1917;
+    --muted: #78716c;
+    --line: #e7e5e4;
+    --card: #ffffff;
+    --frontier: #4f46e5;   /* indigo */
+    --mid: #059669;        /* emerald */
+    --budget: #d97706;     /* amber */
+    --accent: #4f46e5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  /* ── Sticky section switcher ── */
+  .switcher { position: sticky; top: 0; z-index: 10; background: rgba(250,250,249,0.95);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+    margin: -32px -20px 28px; padding: 12px 20px; display: flex; gap: 8px;
+    flex-wrap: wrap; align-items: center; }
+  .switcher button { font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+    padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line);
+    background: #fff; color: var(--muted); transition: all .15s; }
+  .switcher button.active { background: var(--fg); color: #fff; border-color: var(--fg); }
+  .switcher .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin-right: 4px; }
+
+  section.design { display: none; }
+  section.design.active { display: block; }
+  .design-intro { background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 20px; margin-bottom: 20px; }
+  .design-intro h2 { margin: 0 0 6px; font-size: 18px; }
+  .design-intro p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .design-intro .pros { color: #059669; font-size: 12px; margin-top: 6px; }
+  .design-intro .cons { color: #b45309; font-size: 12px; }
+
+  /* ── Shared bits ── */
+  .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 10px;
+    padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line);
+    color: var(--muted); background: #fff; text-transform: capitalize; }
+  .tier-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot-frontier { background: var(--frontier); }
+  .dot-mid { background: var(--mid); }
+  .dot-budget { background: var(--budget); }
+  .open-badge { font-size: 9px; text-transform: uppercase; letter-spacing: .08em;
+    padding: 1px 5px; border-radius: 4px; background: #ecfdf5; color: #047857; }
+  .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+
+  /* ── Cost bar (shared) ── */
+  .costbar { height: 6px; background: #f5f5f4; border-radius: 999px; overflow: hidden; }
+  .costbar > span { display: block; height: 100%; background: var(--accent);
+    border-radius: 999px; transition: width .3s; }
+
+  /* ═══════════════ DIRECTION A: COMPACT TABLE ═══════════════ */
+  .a-table { width: 100%; border-collapse: collapse; background: #fff;
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 13px; }
+  .a-table thead th { text-align: left; font-size: 10px; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--muted); padding: 12px 14px; border-bottom: 1px solid var(--line);
+    background: #fafaf9; font-weight: 600; }
+  .a-table tbody td { padding: 11px 14px; border-bottom: 1px solid #f5f5f4; vertical-align: middle; }
+  .a-table tbody tr { cursor: pointer; transition: background .12s; }
+  .a-table tbody tr:hover { background: #fafafa; }
+  .a-table tbody tr.selected { background: #eef2ff; }
+  .a-table tbody tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+  .a-table .name { font-weight: 600; }
+  .a-table .name small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+  .a-table .cost-cell { min-width: 140px; }
+  .a-table .cost-cell .row { display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 4px; }
+  @media (max-width: 720px) {
+    .a-table .col-price, .a-table .col-ctx { display: none; }
+    .a-table .cost-cell { min-width: 100px; }
+  }
+
+  /* ═══════════════ DIRECTION B: TIERED SHELVES ═══════════════ */
+  .b-shelf { margin-bottom: 24px; }
+  .b-shelf h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+    margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .b-shelf h3 .tier-dot { width: 10px; height: 10px; }
+  .b-shelf h3 .count { color: var(--muted); font-weight: 400; }
+  .b-track { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px;
+    scroll-snap-type: x mandatory; }
+  .b-track::-webkit-scrollbar { height: 6px; }
+  .b-track::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 999px; }
+  .b-card { flex: 0 0 220px; scroll-snap-align: start; background: #fff;
+    border: 1px solid var(--line); border-radius: 12px; padding: 14px; cursor: pointer;
+    transition: all .15s; position: relative; }
+  .b-card:hover { border-color: #d6d3d1; transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,.04); }
+  .b-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .b-card .top { display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 8px; }
+  .b-card .name { font-weight: 600; font-size: 14px; line-height: 1.2; }
+  .b-card .provider { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .b-card .price { font-size: 13px; margin: 10px 0 8px; }
+  .b-card .price b { font-weight: 600; }
+  .b-card .price small { color: var(--muted); font-size: 10px; }
+  .b-card .strengths { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+  .b-card .cost-row { display: flex; justify-content: space-between; font-size: 11px;
+    color: var(--muted); margin-bottom: 4px; }
+  .b-card.tier-frontier { border-top: 3px solid var(--frontier); }
+  .b-card.tier-mid { border-top: 3px solid var(--mid); }
+  .b-card.tier-budget { border-top: 3px solid var(--budget); }
+
+  /* ═══════════════ DIRECTION C: CHIP CLOUD + DETAIL ═══════════════ */
+  .c-layout { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
+  @media (max-width: 820px) { .c-layout { grid-template-columns: 1fr; } }
+  .c-cloud { display: flex; flex-wrap: wrap; gap: 8px; background: #fff;
+    border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .c-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px;
+    border-radius: 999px; border: 1px solid var(--line); background: #fff; cursor: pointer;
+    font-size: 13px; transition: all .12s; }
+  .c-chip:hover { border-color: #a8a29e; }
+  .c-chip.selected { background: var(--fg); color: #fff; border-color: var(--fg); }
+  .c-chip .tier-dot { width: 7px; height: 7px; }
+  .c-chip .cost { font-size: 11px; opacity: .7; margin-left: 2px; }
+  .c-detail { background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px; position: sticky; top: 72px; align-self: start; }
+  .c-detail h4 { margin: 0 0 4px; font-size: 17px; }
+  .c-detail .provider { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+  .c-detail .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .c-detail .meta-item { font-size: 11px; }
+  .c-detail .meta-item small { display: block; color: var(--muted); text-transform: uppercase;
+    letter-spacing: .06em; font-size: 9px; margin-bottom: 2px; }
+  .c-detail .cap-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 6px; }
+  .c-detail .cap-row .label { width: 70px; color: var(--muted); text-transform: capitalize; }
+  .c-detail .cap-row .track { flex: 1; height: 5px; background: #f5f5f4; border-radius: 999px; overflow: hidden; }
+  .c-detail .cap-row .fill { height: 100%; background: var(--accent); border-radius: 999px; }
+  .c-detail .cap-row .val { width: 24px; text-align: right; font-family: ui-monospace, monospace; font-size: 11px; }
+  .c-detail .price-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
+  .c-detail .price-grid div { font-size: 11px; }
+  .c-detail .price-grid b { font-family: ui-monospace, monospace; font-size: 14px; display: block; }
+
+  /* ═══════════════ DIRECTION D: DARK DASHBOARD ═══════════════ */
+  .d-wrap { background: #0f0f12; color: #e7e5e4; border-radius: 16px; padding: 24px;
+    margin: 0 -8px; }
+  .d-wrap .d-header { display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 20px; }
+  .d-wrap .d-header h3 { margin: 0; font-size: 15px; color: #fff; }
+  .d-wrap .d-header .total { font-family: ui-monospace, monospace; font-size: 28px;
+    font-weight: 700; color: var(--accent); }
+  .d-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .d-card { background: #18181b; border: 1px solid #27272a; border-radius: 12px;
+    padding: 14px; cursor: pointer; transition: all .15s; }
+  .d-card:hover { border-color: #3f3f46; transform: translateY(-1px); }
+  .d-card.selected { border-color: var(--accent); background: #1e1b2e; }
+  .d-card .name { font-weight: 600; font-size: 14px; color: #fafafa; }
+  .d-card .provider { font-size: 11px; color: #71717a; margin: 2px 0 10px; }
+  .d-card .cost-big { font-family: ui-monospace, monospace; font-size: 20px;
+    font-weight: 700; color: var(--accent); line-height: 1; margin-bottom: 4px; }
+  .d-card .cost-label { font-size: 10px; color: #71717a; text-transform: uppercase;
+    letter-spacing: .08em; margin-bottom: 10px; }
+  .d-card .meta-row { display: flex; justify-content: space-between; font-size: 11px;
+    color: #a1a1aa; margin-bottom: 4px; }
+  .d-card .tier-bar { height: 2px; border-radius: 999px; margin: -14px -14px 12px; }
+  .d-card.tier-frontier .tier-bar { background: #818cf8; }
+  .d-card.tier-mid .tier-bar { background: #34d399; }
+  .d-card.tier-budget .tier-bar { background: #fbbf24; }
+  .d-card .strengths { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .d-card .strengths .pill { background: #27272a; border-color: #3f3f46; color: #a1a1aa; }
+
+  /* config sliders mockup (shared) */
+  .mock-config { background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 20px; margin-bottom: 20px; font-size: 12px; color: var(--muted);
+    display: flex; gap: 24px; flex-wrap: wrap; align-items: center; }
+  .mock-config .item { display: flex; flex-direction: column; gap: 2px; }
+  .mock-config .item b { color: var(--fg); font-family: ui-monospace, monospace; font-size: 14px; }
+  .mock-config .item small { text-transform: uppercase; letter-spacing: .06em; font-size: 9px; }
+  .mock-config input[type=range] { width: 140px; accent-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="switcher">
+    <span class="label">Direction:</span>
+    <button class="active" data-target="a">A · Compact table</button>
+    <button data-target="b">B · Tiered shelves</button>
+    <button data-target="c">C · Chip cloud</button>
+    <button data-target="d">D · Dark dashboard</button>
+    <button data-target="ab">A+B · Table + tier accents</button>
+  </div>
+
+  <!-- shared mock config so cost numbers feel live -->
+  <div class="mock-config" id="mockConfig">
+    <div class="item"><small>System prompt</small><b>2,000</b><input type="range" min="0" max="32000" step="500" value="2000" data-k="sys" /></div>
+    <div class="item"><small>Input / run</small><b>1,500</b><input type="range" min="100" max="16000" step="100" value="1500" data-k="in" /></div>
+    <div class="item"><small>Output / run</small><b>500</b><input type="range" min="50" max="8000" step="50" value="500" data-k="out" /></div>
+    <div class="item"><small>Cache hit %</small><b>70%</b><input type="range" min="0" max="100" step="5" value="70" data-k="cache" /></div>
+    <div class="item"><small>Runs / day</small><b>100</b><input type="range" min="1" max="10000" step="10" value="100" data-k="runs" /></div>
+  </div>
+
+  <!-- ═════ A ═════ -->
+  <section class="design active" id="a">
+    <div class="design-intro">
+      <h2>A — Compact table with live cost bars</h2>
+      <p>One row per model, sorted cheapest-first. The cost bar updates live as you drag the sliders above. Collapses price columns on mobile. Scales to 50+ models via scroll, not vertical bloat. Replaces both the picker and the comparison list.</p>
+      <div class="pros">+ Highest density · + Scales without growing tall · + Cost is the primary signal</div>
+      <div class="cons">− Less visual personality than card layouts</div>
+    </div>
+    <table class="a-table" id="tableA"></table>
+  </section>
+
+  <!-- ═════ B ═════ -->
+  <section class="design" id="b">
+    <div class="design-intro">
+      <h2>B — Tiered shelves with bento cards</h2>
+      <p>Three horizontal shelves (Frontier / Mid / Budget), each a scroll-snap strip. Tier encoded as a colored top border. Cards show provider, strengths, price, and a live cost bar. Unlimited models per tier without vertical growth.</p>
+      <div class="pros">+ Strong visual identity per tier · + Specialization surfaces · + Horizontal scroll is mobile-friendly</div>
+      <div class="cons">− Less dense than a table · − Two-finger scroll on narrow screens</div>
+    </div>
+    <div id="shelvesB"></div>
+  </section>
+
+  <!-- ═════ C ═════ -->
+  <section class="design" id="c">
+    <div class="design-intro">
+      <h2>C — Chip cloud + detail panel</h2>
+      <p>Models are compact chips (name + tier dot + cost). Clicking opens a rich detail card on the right with capability bars, full pricing breakdown, and metadata. Chips wrap fluidly to any width — the most mobile-friendly option. Progressive disclosure.</p>
+      <div class="pros">+ Best mobile scaling · + Progressive disclosure · + Fast scanning</div>
+      <div class="cons">− Two-step interaction (pick, then read detail)</div>
+    </div>
+    <div class="c-layout">
+      <div class="c-cloud" id="cloudC"></div>
+      <div class="c-detail" id="detailC"></div>
+    </div>
+  </section>
+
+  <!-- ═════ D ═════ -->
+  <section class="design" id="d">
+    <div class="design-intro">
+      <h2>D — Dark dashboard, cost-first hierarchy</h2>
+      <p>Full retheme. Cost-per-run is the visual anchor: large monospace numbers in an accent color. Cards get tier-colored top bars and subtle borders. Auto-filling grid wraps cleanly on any width. The most dramatic visual change.</p>
+      <div class="pros">+ Biggest "wow" · + Cost is the hero · + Modern look</div>
+      <div class="cons">− Full retheme touches every component · − Strong opinion (dark)</div>
+    </div>
+    <div class="d-wrap">
+      <div class="d-header">
+        <h3>Models <span style="color:#71717a;font-weight:400">· sorted by cost/run</span></h3>
+        <div class="total" id="dTotal">$0.000<span style="font-size:13px;color:#71717a">/run</span></div>
+      </div>
+      <div class="d-grid" id="gridD"></div>
+    </div>
+  </section>
+
+  <!-- ═════ A+B mix ═════ -->
+  <section class="design" id="ab">
+    <div class="design-intro">
+      <h2>A+B — Table structure with tier accent colors</h2>
+      <p>Same compact table as A, but with tier-colored left borders, tier dots in the name cell, and strength pills. Recommended if you want the density of A with the visual identity of B.</p>
+      <div class="pros">+ Density of A + identity of B · + Low risk</div>
+      <div class="cons">− Still monochrome-ish overall</div>
+    </div>
+    <table class="a-table" id="tableAB"></table>
+  </section>
+</div>
+
+<script>
+const MODELS = [
+{"id":"claude-opus-4-7","name":"Claude Opus 4.7","provider":"Anthropic","tier":"frontier","strengths":["coding","reasoning"],"isOpen":false,"contextK":1000,"input":5,"output":25,"cacheRead":0.5,"supportsCache":true,"outputMultiplier":7.9,"cap":{"coding":92,"reasoning":90,"general":88}},
+{"id":"claude-sonnet-4-6","name":"Claude Sonnet 4.6","provider":"Anthropic","tier":"frontier","strengths":["coding","general"],"isOpen":false,"contextK":1000,"input":3,"output":15,"cacheRead":0.3,"supportsCache":true,"outputMultiplier":1,"cap":{"coding":85,"reasoning":74,"general":82}},
+{"id":"gpt-5.5","name":"GPT-5.5","provider":"OpenAI","tier":"frontier","strengths":["reasoning"],"isOpen":false,"contextK":1050,"input":5,"output":30,"cacheRead":0.5,"supportsCache":true,"outputMultiplier":5.4,"cap":{"coding":91,"reasoning":91,"general":90}},
+{"id":"gemini-3.1-pro","name":"Gemini 3.1 Pro","provider":"Google","tier":"frontier","strengths":["multimodal","long-context","reasoning"],"isOpen":false,"contextK":1049,"input":2,"output":12,"cacheRead":0.2,"supportsCache":true,"outputMultiplier":4.1,"cap":{"coding":85,"reasoning":92,"general":87}},
+{"id":"deepseek-v4-pro","name":"DeepSeek V4 Pro","provider":"DeepSeek","tier":"frontier","strengths":["reasoning","coding"],"isOpen":true,"contextK":1049,"input":0.435,"output":0.87,"cacheRead":0.0435,"supportsCache":true,"outputMultiplier":13.6,"cap":{"coding":88,"reasoning":82,"general":78}},
+{"id":"kimi-k2.6","name":"Kimi K2.6","provider":"Moonshot","tier":"frontier","strengths":["reasoning","long-context"],"isOpen":true,"contextK":262,"input":0.67,"output":3.5,"cacheRead":0.067,"supportsCache":true,"outputMultiplier":12.1,"cap":{"coding":84,"reasoning":80,"general":75}},
+{"id":"claude-haiku-4-5","name":"Claude Haiku 4.5","provider":"Anthropic","tier":"mid","strengths":["fast","coding"],"isOpen":false,"contextK":200,"input":1,"output":5,"cacheRead":0.1,"supportsCache":true,"outputMultiplier":0.59,"cap":{"coding":50,"reasoning":58,"general":65}},
+{"id":"gpt-5.4-mini","name":"GPT-5.4 Mini","provider":"OpenAI","tier":"mid","strengths":["fast","general"],"isOpen":false,"contextK":400,"input":0.75,"output":4.5,"cacheRead":0.075,"supportsCache":true,"outputMultiplier":0.17,"cap":{"coding":66,"reasoning":60,"general":70}},
+{"id":"gemini-3-flash","name":"Gemini 3 Flash","provider":"Google","tier":"mid","strengths":["multimodal","fast","long-context"],"isOpen":false,"contextK":1049,"input":0.5,"output":3,"cacheRead":0.05,"supportsCache":true,"outputMultiplier":5.1,"cap":{"coding":72,"reasoning":70,"general":72}},
+{"id":"grok-4.1-fast","name":"Grok 4.1 Fast","provider":"xAI","tier":"mid","strengths":["long-context","fast"],"isOpen":false,"contextK":2000,"input":0.2,"output":0.5,"cacheRead":0.05,"supportsCache":true,"outputMultiplier":0.31,"cap":{"coding":58,"reasoning":68,"general":65}},
+{"id":"qwen-3.6-plus","name":"Qwen3.6 Plus","provider":"Alibaba","tier":"mid","strengths":["coding","general"],"isOpen":true,"contextK":1000,"input":0.325,"output":1.95,"supportsCache":false,"outputMultiplier":7.1,"cap":{"coding":78,"reasoning":76,"general":73}},
+{"id":"glm-5.1","name":"GLM 5.1","provider":"Z.ai","tier":"budget","strengths":["coding","long-context"],"isOpen":true,"contextK":203,"input":0.98,"output":3.08,"supportsCache":false,"outputMultiplier":1,"cap":{"coding":72,"reasoning":68,"general":65}},
+{"id":"deepseek-v4-flash","name":"DeepSeek V4 Flash","provider":"DeepSeek","tier":"budget","strengths":["fast","general"],"isOpen":true,"contextK":1049,"input":0.09,"output":0.18,"cacheRead":0.009,"supportsCache":true,"outputMultiplier":17.1,"cap":{"coding":68,"reasoning":62,"general":58}},
+{"id":"llama-3.3-70b","name":"Llama 3.3 70B","provider":"Meta","tier":"budget","strengths":["general"],"isOpen":true,"contextK":131,"input":0.1,"output":0.32,"supportsCache":false,"outputMultiplier":0.27,"cap":{"coding":52,"reasoning":48,"general":55}},
+{"id":"minimax-m2.7","name":"MiniMax M2.7","provider":"MiniMax","tier":"budget","strengths":["general"],"isOpen":true,"contextK":205,"input":0.25,"output":1,"supportsCache":false,"outputMultiplier":6.2,"cap":{"coding":58,"reasoning":55,"general":56}},
+{"id":"mistral-large-2","name":"Mistral Large","provider":"Mistral","tier":"budget","strengths":["general"],"isOpen":true,"contextK":262,"input":0.5,"output":1.5,"cacheRead":0.05,"supportsCache":true,"outputMultiplier":0.19,"cap":{"coding":60,"reasoning":52,"general":60}}
+];
+
+const TIER_LABEL = { frontier: "Frontier", mid: "Mid", budget: "Budget" };
+let selectedId = "claude-sonnet-4-6";
+let cfg = { sys: 2000, in: 1500, out: 500, cache: 0.7, runs: 100 };
+
+function costPerRun(m) {
+  const totalInput = cfg.sys + cfg.in;
+  const cached = m.supportsCache ? totalInput * cfg.cache : 0;
+  const uncached = totalInput - cached;
+  const inputCost = (uncached / 1e6) * m.input;
+  const cachedCost = (cached / 1e6) * (m.cacheRead || 0);
+  const outputCost = (cfg.out / 1e6) * m.output;
+  return inputCost + cachedCost + outputCost;
+}
+function fmt(n) {
+  if (n < 0.001) return "$" + (n*1000).toFixed(4) + "m";
+  if (n < 1) return "$" + n.toFixed(4);
+  if (n < 10) return "$" + n.toFixed(3);
+  return "$" + n.toFixed(2);
+}
+function withCosts() {
+  return MODELS.map(m => ({ ...m, cost: costPerRun(m) }))
+    .sort((a,b) => a.cost - b.cost);
+}
+function strengthPills(m, dark) {
+  return m.strengths.slice(0,3).map(s => `<span class="pill">${s}</span>`).join("");
+}
+
+// ── A: table ──
+function renderTableA() {
+  const rows = withCosts();
+  const max = Math.max(...rows.map(r => r.cost), 0.0001);
+  const t = document.getElementById("tableA");
+  t.innerHTML = `<thead><tr>
+    <th>Model</th><th class="col-price">Price /M (in·out)</th>
+    <th class="col-ctx">Context</th><th>Cost / run</th>
+  </tr></thead><tbody>` + rows.map(m => `
+    <tr data-id="${m.id}" class="${m.id===selectedId?'selected':''}">
+      <td><div class="name">${m.name}${m.isOpen?' <span class="open-badge">open</span>':''}</div>
+        <small><span class="tier-dot dot-${m.tier}"></span> ${TIER_LABEL[m.tier]} · ${m.provider}</small></td>
+      <td class="col-price mono">$${m.input}·$${m.output}</td>
+      <td class="col-ctx mono">${m.contextK}K</td>
+      <td class="cost-cell"><div class="row"><span class="mono">${fmt(m.cost)}</span>
+        <span style="font-size:10px;color:#a8a29e">${((m.cost/max)*100).toFixed(0)}%</span></div>
+        <div class="costbar"><span style="width:${(m.cost/max)*100}%"></span></div></td>
+    </tr>`).join("") + `</tbody>`;
+  t.querySelectorAll("tbody tr").forEach(tr => tr.onclick = () => {
+    selectedId = tr.dataset.id; renderAll();
+  });
+}
+
+// ── B: shelves ──
+function renderShelvesB() {
+  const max = Math.max(...MODELS.map(m => costPerRun(m)), 0.0001);
+  const tiers = ["frontier","mid","budget"];
+  document.getElementById("shelvesB").innerHTML = tiers.map(tier => {
+    const list = MODELS.filter(m => m.tier === tier)
+      .map(m => ({...m, cost: costPerRun(m)}))
+      .sort((a,b) => a.cost - b.cost);
+    return `<div class="b-shelf"><h3><span class="tier-dot dot-${tier}"></span>${TIER_LABEL[tier]}
+      <span class="count">· ${list.length} models</span></h3>
+      <div class="b-track">` + list.map(m => `
+        <div class="b-card tier-${tier} ${m.id===selectedId?'selected':''}" data-id="${m.id}">
+          <div class="top"><div><div class="name">${m.name}</div>
+          <div class="provider">${m.provider}</div></div>
+          ${m.isOpen?'<span class="open-badge">open</span>':''}</div>
+          <div class="price"><b>$${m.input}</b><small>/M in · </small>
+            <b>$${m.output}</b><small>/M out</small></div>
+          <div class="strengths">${strengthPills(m)}</div>
+          <div class="cost-row"><span>Cost / run</span><span class="mono">${fmt(m.cost)}</span></div>
+          <div class="costbar"><span style="width:${(m.cost/max)*100}%"></span></div>
+        </div>`).join("") + `</div></div>`;
+  }).join("");
+  document.querySelectorAll("#shelvesB .b-card").forEach(c => c.onclick = () => {
+    selectedId = c.dataset.id; renderAll();
+  });
+}
+
+// ── C: chip cloud + detail ──
+function renderChipsC() {
+  const rows = withCosts();
+  const cloud = document.getElementById("cloudC");
+  cloud.innerHTML = rows.map(m => `
+    <div class="c-chip ${m.id===selectedId?'selected':''}" data-id="${m.id}">
+      <span class="tier-dot dot-${m.tier}"></span>${m.name}
+      <span class="cost mono">${fmt(m.cost)}</span></div>`).join("");
+  cloud.querySelectorAll(".c-chip").forEach(c => c.onclick = () => {
+    selectedId = c.dataset.id; renderAll();
+  });
+  renderDetailC();
+}
+function renderDetailC() {
+  const m = MODELS.find(x => x.id === selectedId);
+  if (!m) return;
+  const d = document.getElementById("detailC");
+  const cap = m.cap || {};
+  d.innerHTML = `<h4>${m.name}</h4>
+    <div class="provider"><span class="tier-dot dot-${m.tier}"></span> ${TIER_LABEL[m.tier]} · ${m.provider}${m.isOpen?' · <span class="open-badge">open</span>':''}</div>
+    <div class="meta">
+      <div class="meta-item"><small>Context</small><b class="mono">${m.contextK}K</b></div>
+      <div class="meta-item"><small>Cache</small><b>${m.supportsCache?'Yes':'No'}</b></div>
+      <div class="meta-item"><small>Verbosity</small><b class="mono">${m.outputMultiplier}×</b></div>
+      <div class="meta-item"><small>Cost / run</small><b class="mono" style="color:var(--accent)">${fmt(costPerRun(m))}</b></div>
+    </div>
+    <div>${["coding","reasoning","general"].map(k => `
+      <div class="cap-row"><span class="label">${k}</span>
+        <span class="track"><span class="fill" style="width:${cap[k]||0}%"></span></span>
+        <span class="val">${cap[k]||'-'}</span></div>`).join("")}</div>
+    <div class="price-grid">
+      <div><small style="color:#78716c">Input /M</small><b>$${m.input}</b></div>
+      <div><small style="color:#78716c">Output /M</small><b>$${m.output}</b></div>
+      <div><small style="color:#78716c">Cache read /M</small><b>${m.cacheRead?'$'+m.cacheRead:'-'}</b></div>
+      <div><small style="color:#78716c">Per month</small><b>${fmt(costPerRun(m)*cfg.runs*30)}</b></div>
+    </div>
+    <div style="margin-top:14px;font-size:11px;color:#78716c">Strengths: ${m.strengths.join(", ")}</div>`;
+}
+
+// ── D: dark dashboard ──
+function renderDarkD() {
+  const rows = withCosts();
+  const sel = rows.find(r => r.id === selectedId) || rows[0];
+  document.getElementById("dTotal").innerHTML = fmt(sel.cost) + '<span style="font-size:13px;color:#71717a">/run</span>';
+  const max = Math.max(...rows.map(r => r.cost), 0.0001);
+  document.getElementById("gridD").innerHTML = rows.map(m => `
+    <div class="d-card tier-${m.tier} ${m.id===selectedId?'selected':''}" data-id="${m.id}">
+      <div class="tier-bar"></div>
+      <div class="name">${m.name}</div>
+      <div class="provider">${m.provider}${m.isOpen?' · open':''}</div>
+      <div class="cost-big">${fmt(m.cost)}</div>
+      <div class="cost-label">cost / run · ${((m.cost/max)*100).toFixed(0)}% of max</div>
+      <div class="meta-row"><span>in/out /M</span><span class="mono">$${m.input}·$${m.output}</span></div>
+      <div class="meta-row"><span>context · verbose</span><span class="mono">${m.contextK}K · ${m.outputMultiplier}×</span></div>
+      <div class="strengths">${strengthPills(m,true)}</div>
+    </div>`).join("");
+  document.querySelectorAll("#gridD .d-card").forEach(c => c.onclick = () => {
+    selectedId = c.dataset.id; renderAll();
+  });
+}
+
+// ── A+B: table with tier accents ──
+function renderTableAB() {
+  const rows = withCosts();
+  const max = Math.max(...rows.map(r => r.cost), 0.0001);
+  const t = document.getElementById("tableAB");
+  t.innerHTML = `<thead><tr>
+    <th>Model</th><th>Strengths</th><th class="col-price">Price /M</th>
+    <th class="col-ctx">Ctx</th><th>Cost / run</th>
+  </tr></thead><tbody>` + rows.map(m => `
+    <tr data-id="${m.id}" class="${m.id===selectedId?'selected':''}" style="${m.id===selectedId?'':`box-shadow:inset 3px 0 0 var(--${m.tier})`}">
+      <td><div class="name"><span class="tier-dot dot-${m.tier}" style="margin-right:6px"></span>${m.name}${m.isOpen?' <span class="open-badge">open</span>':''}</div>
+        <small>${TIER_LABEL[m.tier]} · ${m.provider}</small></td>
+      <td>${strengthPills(m)}</td>
+      <td class="col-price mono">$${m.input}·$${m.output}</td>
+      <td class="col-ctx mono">${m.contextK}K</td>
+      <td class="cost-cell"><div class="row"><span class="mono">${fmt(m.cost)}</span></div>
+        <div class="costbar"><span style="width:${(m.cost/max)*100}%;background:var(--${m.tier})"></span></div></td>
+    </tr>`).join("") + `</tbody>`;
+  t.querySelectorAll("tbody tr").forEach(tr => tr.onclick = () => {
+    selectedId = tr.dataset.id; renderAll();
+  });
+}
+
+function renderAll() {
+  renderTableA(); renderShelvesB(); renderChipsC(); renderDarkD(); renderTableAB();
+}
+
+// ── switcher ──
+document.querySelectorAll(".switcher button").forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll(".switcher button").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    document.querySelectorAll("section.design").forEach(s => s.classList.remove("active"));
+    document.getElementById(b.dataset.target).classList.add("active");
+  };
+});
+
+// ── sliders ──
+document.querySelectorAll("#mockConfig input[type=range]").forEach(r => {
+  r.oninput = () => {
+    const k = r.dataset.k;
+    const v = Number(r.value);
+    if (k === "cache") cfg.cache = v / 100;
+    else cfg[k] = v;
+    const item = r.closest(".item");
+    const b = item.querySelector("b");
+    if (k === "cache") b.textContent = v + "%";
+    else if (k === "runs" || k === "sys" || k === "in" || k === "out")
+      b.textContent = v.toLocaleString();
+    renderAll();
+  };
+});
+
+renderAll();
+</script>
+</body>
+</html>

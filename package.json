@@ -11,7 +11,9 @@
     "test:watch": "vitest",
     "add-fixture": "tsx scripts/add-billed-fixture.ts",
     "replay": "tsx scripts/replay-driver.ts",
-    "validate-counterfactual": "tsx scripts/validate-counterfactual.ts"
+    "validate-counterfactual": "tsx scripts/validate-counterfactual.ts",
+    "sync-models": "tsx scripts/sync-models.ts",
+    "sync-models:check": "tsx scripts/sync-models.ts --check"
   },
   "dependencies": {
     "gpt-tokenizer": "^3.4.0",

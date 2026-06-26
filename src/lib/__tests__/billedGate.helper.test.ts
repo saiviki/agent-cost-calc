@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import { runBilledGate, runAllBilledGates } from "./billedGate.helper";
+import { MODELS } from "../models";
 
 describe("billedGate.helper — gate mechanics on synthetic fixtures", () => {
   it("claude-code-session: no real invoice → gate skipped (hasRealInvoice=false, passesHard=false); deterministic reconstruction still computes 0.03735", () => {
@@ -34,7 +35,14 @@ describe("billedGate.helper — gate mechanics on synthetic fixtures", () => {
     // (anthropic); sourceModelId is the resolved PRICED model (glm-5.1).
     expect(g.sourceModelId).toBe("glm-5.1");
     expect(g.provider).toBe("anthropic");
-    expect(g.computedCost).toBeCloseTo(0.00112, 6);
+    // Expected figure is derived from the live GLM 5.1 prices in MODELS
+    // (sourced from pricing.generated.json via sync-models.ts). Re-derives
+    // whenever the snapshot updates instead of hardcoding a stale number.
+    const glm = MODELS.find((m) => m.id === "glm-5.1")!;
+    const expected =
+      (3000 * glm.inputPricePerM) / 1e6 + (800 * glm.outputPricePerM) / 1e6 +
+      (3500 * glm.inputPricePerM) / 1e6 + (700 * glm.outputPricePerM) / 1e6;
+    expect(g.computedCost).toBeCloseTo(expected, 6);
   });
 
   // ── Load-bearing honesty assertion (P4) ──
