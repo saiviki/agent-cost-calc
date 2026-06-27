@@ -77,9 +77,9 @@ function Slider({
 }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex justify-between items-baseline">
-        <label className="text-sm font-medium text-stone-700">{label}</label>
-        <span className="text-sm font-mono font-semibold text-stone-900">
+      <div className="flex justify-between items-baseline gap-2">
+        <label className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">{label}</label>
+        <span className="text-sm font-mono font-semibold text-stone-900 tabular-nums">
           {format(value)}
         </span>
       </div>
@@ -92,7 +92,7 @@ function Slider({
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full h-1.5 rounded-full appearance-none bg-stone-200 accent-stone-800 cursor-pointer"
       />
-      {hint && <p className="text-xs text-stone-400">{hint}</p>}
+      {hint && <p className="text-xs text-stone-500">{hint}</p>}
     </div>
   );
 }
@@ -164,19 +164,19 @@ function ModelTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-stone-50 border-b border-stone-200">
-            <th className="text-left text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-3 py-2.5">
+            <th className="text-left text-[10px] font-semibold uppercase tracking-wider text-stone-500 px-3 py-2.5">
               Model
             </th>
-            <th className="text-left text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-3 py-2.5 hidden sm:table-cell">
+            <th className="text-left text-[10px] font-semibold uppercase tracking-wider text-stone-500 px-3 py-2.5 hidden sm:table-cell">
               Strengths
             </th>
-            <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-3 py-2.5 hidden md:table-cell">
+            <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-500 px-3 py-2.5 hidden md:table-cell">
               Price /M
             </th>
-            <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-3 py-2.5 hidden md:table-cell">
+            <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-500 px-3 py-2.5 hidden md:table-cell">
               Ctx
             </th>
-            <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-3 py-2.5 w-[30%] min-w-[140px]">
+            <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-500 px-3 py-2.5 w-[30%] min-w-[140px]">
               Cost / run
             </th>
           </tr>
@@ -217,7 +217,7 @@ function ModelTable({
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-stone-400 flex items-center gap-1.5">
+                      <div className="text-[11px] text-stone-500 flex items-center gap-1.5">
                         <span
                           className={`inline-block w-1.5 h-1.5 rounded-full ${TIER_DOT[model.tier]}`}
                         />
@@ -1180,10 +1180,10 @@ export default function Home() {
             ponytail: per-day/per-month + breakdown removed to match the
             prototype; re-add a compact summary line if aggregate totals wanted. */}
         <section className="bg-white border border-stone-200 rounded-xl p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400 mb-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-500 mb-4">
             Cost inputs
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-5">
             <Slider
               label="System prompt"
               value={config.systemPromptTokens}
@@ -1255,10 +1255,10 @@ export default function Home() {
         {/* Model selector + filters + full-width table */}
         <section className="space-y-3">
           <div className="flex items-baseline justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-500">
               Models
             </h2>
-            <span className="text-xs text-stone-400">
+            <span className="text-xs text-stone-500">
               {filteredModels.length} of {MODELS.length}
             </span>
           </div>
@@ -1266,7 +1266,7 @@ export default function Home() {
           {/* Filter rows */}
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
+              <span className="text-[10px] uppercase tracking-wider text-stone-500 mr-1">
                 Tier
               </span>
               {TIERS.map((t) => (
@@ -1279,7 +1279,7 @@ export default function Home() {
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
+              <span className="text-[10px] uppercase tracking-wider text-stone-500 mr-1">
                 Type
               </span>
               {(["closed", "open"] as const).map((t) => (
@@ -1292,7 +1292,7 @@ export default function Home() {
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
+              <span className="text-[10px] uppercase tracking-wider text-stone-500 mr-1">
                 Strength
               </span>
               {STRENGTHS.map((s) => (
