@@ -6,23 +6,23 @@
 //                                 Human judgment. Checked in. NOT auto-generated.
 //   2. pricing.generated.json:    pricing, context window, isOpen, displayName.
 //                                 Machine-truthable. Auto-written by sync-models.ts
-//                                  from OpenRouter's /api/v1/models.
+//                                  from models.dev /catalog.json.
 //
 // The two are joined in src/lib/models.ts at module load. Editorial wins for
-// judgment fields; generated wins for volatile fields. New OpenRouter models
+// judgment fields; generated wins for volatile fields. New models.dev models
 // that aren't listed here surface as a warning in the sync report — they are
 // NEVER silently added (lineup curation is intentional, see README).
 //
-// `openrouterSlug` is the join key — it must match the `id` field in
-// OpenRouter's /api/v1/models response. Update it if a slug changes.
+// `sourceId` is the metadata key — it must match the canonical id in
+// models.dev's /catalog.json `models` map (`<lab>/<model-slug>`).
 
 import type { Tier, Strength, CapabilityConfidence } from "../src/lib/models";
 
 export type EditorialEntry = {
   /** Local id used throughout the app. Stable across slug renames. */
   id: string;
-  /** OpenRouter model id (the `id` field in /api/v1/models). */
-  openrouterSlug: string;
+  /** models.dev canonical id (`<lab>/<model-slug>`), the `id` key in /catalog.json models map. */
+  sourceId: string;
   tier: Tier;
   strengths: Strength[];
   /**
@@ -47,7 +47,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   // ── FRONTIER ──
   {
     id: "claude-opus-4-7",
-    openrouterSlug: "anthropic/claude-opus-4.7",
+    sourceId: "anthropic/claude-opus-4-7",
     tier: "frontier",
     strengths: ["coding", "reasoning"],
     outputMultiplier: 7.9,
@@ -61,7 +61,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "claude-sonnet-4-6",
-    openrouterSlug: "anthropic/claude-sonnet-4.6",
+    sourceId: "anthropic/claude-sonnet-4-6",
     tier: "frontier",
     strengths: ["coding", "general"],
     outputMultiplier: 1.0,
@@ -75,7 +75,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "gpt-5.5",
-    openrouterSlug: "openai/gpt-5.5",
+    sourceId: "openai/gpt-5.5",
     tier: "frontier",
     strengths: ["reasoning"],
     outputMultiplier: 5.4,
@@ -89,7 +89,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "gemini-3.1-pro",
-    openrouterSlug: "google/gemini-3.1-pro-preview",
+    sourceId: "google/gemini-3.1-pro-preview",
     tier: "frontier",
     strengths: ["multimodal", "long-context", "reasoning"],
     outputMultiplier: 4.1,
@@ -103,7 +103,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "deepseek-v4-pro",
-    openrouterSlug: "deepseek/deepseek-v4-pro",
+    sourceId: "deepseek/deepseek-v4-pro",
     tier: "frontier",
     strengths: ["reasoning", "coding"],
     outputMultiplier: 13.6,
@@ -117,7 +117,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "kimi-k2.6",
-    openrouterSlug: "moonshotai/kimi-k2.6",
+    sourceId: "moonshotai/kimi-k2.6",
     tier: "frontier",
     strengths: ["reasoning", "long-context"],
     outputMultiplier: 12.1,
@@ -132,7 +132,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   // ── MID ──
   {
     id: "claude-haiku-4-5",
-    openrouterSlug: "anthropic/claude-haiku-4.5",
+    sourceId: "anthropic/claude-haiku-4-5",
     tier: "mid",
     strengths: ["fast", "coding"],
     outputMultiplier: 0.59,
@@ -146,7 +146,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "gpt-5.4-mini",
-    openrouterSlug: "openai/gpt-5.4-mini",
+    sourceId: "openai/gpt-5.4-mini",
     tier: "mid",
     strengths: ["fast", "general"],
     outputMultiplier: 0.17,
@@ -160,7 +160,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "gemini-3-flash",
-    openrouterSlug: "google/gemini-3-flash-preview",
+    sourceId: "google/gemini-3-flash-preview",
     tier: "mid",
     strengths: ["multimodal", "fast", "long-context"],
     outputMultiplier: 5.1,
@@ -174,11 +174,8 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "grok-4.1-fast",
-    // NOTE: this exact slug is not currently in OpenRouter's /api/v1/models
-    // (xAI's lineup has moved to grok-4.3). The sync script will skip it with a
-    // warning and `--allow-missing`. Pricing stays in pricing.generated.json
-    // (manually maintained for this model) until xAI re-lists a fast variant.
-    openrouterSlug: "x-ai/grok-4.1-fast",
+    // CARRY-FORWARD: pending re-listing or lineup refresh; closest models.dev id: xai/grok-4.3
+    sourceId: "",
     tier: "mid",
     strengths: ["long-context", "fast"],
     outputMultiplier: 0.31,
@@ -192,7 +189,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "qwen-3.6-plus",
-    openrouterSlug: "qwen/qwen3.6-plus",
+    sourceId: "alibaba/qwen3.6-plus",
     tier: "mid",
     strengths: ["coding", "general"],
     outputMultiplier: 7.1,
@@ -207,7 +204,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   // ── BUDGET ──
   {
     id: "glm-5.1",
-    openrouterSlug: "z-ai/glm-5.1",
+    sourceId: "zhipuai/glm-5.1",
     tier: "budget",
     strengths: ["coding", "long-context"],
     outputMultiplier: 1.0,
@@ -221,7 +218,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "deepseek-v4-flash",
-    openrouterSlug: "deepseek/deepseek-v4-flash",
+    sourceId: "deepseek/deepseek-v4-flash",
     tier: "budget",
     strengths: ["fast", "general"],
     outputMultiplier: 17.1,
@@ -235,7 +232,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "llama-3.3-70b",
-    openrouterSlug: "meta-llama/llama-3.3-70b-instruct",
+    sourceId: "meta/llama-3.3-70b-instruct",
     tier: "budget",
     strengths: ["general"],
     outputMultiplier: 0.27,
@@ -249,7 +246,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "minimax-m2.7",
-    openrouterSlug: "minimax/minimax-m2.7",
+    sourceId: "minimax/MiniMax-M2.7",
     tier: "budget",
     strengths: ["general"],
     outputMultiplier: 6.2,
@@ -263,7 +260,7 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "mistral-large-2",
-    openrouterSlug: "mistralai/mistral-large-2512",
+    sourceId: "mistral/mistral-large-2512",
     tier: "budget",
     strengths: ["general"],
     outputMultiplier: 0.19,

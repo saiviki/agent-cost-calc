@@ -12,31 +12,12 @@ import {
   type AgentConfig,
   type Tier,
   type Strength,
-  type Model,
   type CostBreakdown,
 } from "@/lib/models";
-import {
-  parseTrace,
-  parsedRunToConfig,
-  TraceParseError,
-  type ParsedRun,
-} from "@/lib/parseTrace";
-import {
-  projectCounterfactual,
-  cacheRateInsight,
-} from "@/lib/counterfactual";
-import { reconstructCost } from "@/lib/reconstructCost";
-import { projectRetokenized, type RetokenizedCostRow } from "@/lib/retokenizedCost";
-import {
-  classifyTask,
-  type Classification,
-  type TaskType,
-  type Complexity,
-} from "@/lib/classifyTask";
-import { recommend, type Recommendation } from "@/lib/recommend";
+import { parseUsagePaste, PasteUsageError } from "@/lib/pasteUsage";
 
 const DEFAULT_CONFIG: AgentConfig = {
-  modelId: "claude-sonnet-4-6", // most-used model on OpenRouter
+  modelId: "claude-sonnet-4-6",
   systemPromptTokens: 2000,
   inputTokensPerRun: 1500,
   outputTokensPerRun: 500,
@@ -56,6 +37,14 @@ const STRENGTHS: Strength[] = [
   "general",
 ];
 
+const PASTE_EXAMPLE = `{
+  "model_id": "claude-sonnet-4-6",
+  "spans": [
+    { "input_tokens": 4200, "output_tokens": 890, "cached_tokens": 1800, "tool_name": "retriever" },
+    { "input_tokens": 800, "output_tokens": 110 }
+  ]
+}`;
+
 function Slider({
   label,
   value,
@@ -64,7 +53,6 @@ function Slider({
   step,
   onChange,
   format,
-  hint,
 }: {
   label: string;
   value: number;
@@ -73,12 +61,13 @@ function Slider({
   step: number;
   onChange: (v: number) => void;
   format: (v: number) => string;
-  hint?: string;
 }) {
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between items-baseline gap-2">
-        <label className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">{label}</label>
+        <label className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+          {label}
+        </label>
         <span className="text-sm font-mono font-semibold text-stone-900 tabular-nums">
           {format(value)}
         </span>
@@ -92,12 +81,11 @@ function Slider({
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full h-1.5 rounded-full appearance-none bg-stone-200 accent-stone-800 cursor-pointer"
       />
-      {hint && <p className="text-xs text-stone-500">{hint}</p>}
     </div>
   );
 }
 
-function Chip<T extends string>({
+function Chip({
   label,
   active,
   onToggle,
@@ -121,8 +109,6 @@ function Chip<T extends string>({
   );
 }
 
-
-// Tier accent colors. Static class strings so Tailwind JIT keeps them.
 const TIER_DOT: Record<Tier, string> = {
   frontier: "bg-indigo-500",
   mid: "bg-emerald-500",
@@ -139,17 +125,19 @@ const TIER_SELECTED_ROW: Record<Tier, string> = {
   budget: "bg-amber-50",
 };
 
-type ModelRow = { model: Model; cost: CostBreakdown };
+type ModelRow = { model: (typeof MODELS)[number]; cost: CostBreakdown };
 
 function ModelTable({
   rows,
   maxCost,
   selectedId,
+  viewMode = "task",
   onSelect,
 }: {
   rows: ModelRow[];
   maxCost: number;
   selectedId: string;
+  viewMode?: "task" | "day" | "month";
   onSelect: (id: string) => void;
 }) {
   if (rows.length === 0) {
@@ -159,6 +147,14 @@ function ModelTable({
       </div>
     );
   }
+
+  const costHeader =
+    viewMode === "task"
+      ? "Cost / Task"
+      : viewMode === "day"
+        ? "Cost / Day"
+        : "Cost / Month";
+
   return (
     <div className="border border-stone-200 rounded-xl overflow-hidden bg-white">
       <table className="w-full text-sm">
@@ -176,23 +172,28 @@ function ModelTable({
             <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-500 px-3 py-2.5 hidden md:table-cell">
               Ctx
             </th>
-            <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-500 px-3 py-2.5 w-[30%] min-w-[140px]">
-              Cost / run
+            <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-stone-500 px-3 py-2.5 w-[25%] min-w-[140px]">
+              {costHeader}
             </th>
           </tr>
         </thead>
         <tbody>
           {rows.map(({ model, cost }) => {
             const selected = model.id === selectedId;
-            const pct = maxCost > 0 ? (cost.totalPerRun / maxCost) * 100 : 0;
+            const displayCost =
+              viewMode === "task"
+                ? cost.totalPerRun
+                : viewMode === "day"
+                  ? cost.totalPerDay
+                  : cost.totalPerMonth;
+            const pct = maxCost > 0 ? (displayCost / maxCost) * 100 : 0;
+
             return (
               <tr
                 key={model.id}
                 onClick={() => onSelect(model.id)}
                 className={`cursor-pointer border-b border-stone-100 last:border-0 transition-colors ${
-                  selected
-                    ? TIER_SELECTED_ROW[model.tier]
-                    : "hover:bg-stone-50"
+                  selected ? TIER_SELECTED_ROW[model.tier] : "hover:bg-stone-50"
                 }`}
               >
                 <td className="px-3 py-2.5">
@@ -231,34 +232,33 @@ function ModelTable({
                     {model.strengths.slice(0, 3).map((s) => (
                       <span
                         key={s}
-                        className="text-[10px] px-1.5 py-0.5 rounded-full border border-stone-200 text-stone-500 capitalize"
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-600"
                       >
                         {STRENGTH_LABEL[s]}
                       </span>
                     ))}
                   </div>
                 </td>
-                <td className="px-3 py-2.5 text-right font-mono text-xs text-stone-500 hidden md:table-cell">
-                  ${model.inputPricePerM}·${model.outputPricePerM}
-                </td>
-                <td className="px-3 py-2.5 text-right font-mono text-xs text-stone-500 hidden md:table-cell">
-                  {model.contextK}K
-                </td>
-                <td className="px-3 py-2.5 pr-3">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`font-mono text-xs whitespace-nowrap ml-auto ${
-                        selected ? "font-semibold text-stone-900" : "text-stone-600"
-                      }`}
-                    >
-                      {formatCost(cost.totalPerRun)}
-                    </span>
+                <td className="px-3 py-2.5 text-right hidden md:table-cell font-mono text-xs text-stone-600 tabular-nums">
+                  <div>${model.inputPricePerM.toFixed(2)}</div>
+                  <div className="text-stone-400">
+                    ${model.outputPricePerM.toFixed(2)} out
                   </div>
-                  <div className="h-1 bg-stone-100 rounded-full overflow-hidden mt-1">
-                    <div
-                      className={`h-full rounded-full ${TIER_BAR[model.tier]}`}
-                      style={{ width: `${pct}%` }}
-                    />
+                </td>
+                <td className="px-3 py-2.5 text-right hidden md:table-cell font-mono text-xs text-stone-600 tabular-nums">
+                  {model.contextK}k
+                </td>
+                <td className="px-3 py-2.5">
+                  <div className="space-y-1">
+                    <div className="text-right font-mono font-semibold text-stone-900 tabular-nums">
+                      {formatCost(displayCost)}
+                    </div>
+                    <div className="h-1.5 rounded-full bg-stone-100 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${TIER_BAR[model.tier]} opacity-70`}
+                        style={{ width: `${Math.min(100, pct)}%` }}
+                      />
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -277,829 +277,84 @@ function toggleSet<T>(set: Set<T>, value: T): Set<T> {
   return next;
 }
 
-// C5 — confidence indicator bar for the Task DNA card. Clamps to [0,1];
-// never NaN-renders (missing-signal traces yield 0-confidence verdicts).
-function ConfidenceBar({ value, label }: { value: number; label: string }) {
-  const pct =
-    Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 100;
-  return (
-    <div className="space-y-1">
-      <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full bg-stone-400"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="text-[11px] text-stone-400">{label}</span>
-    </div>
-  );
-}
-
-// ── S4 — "Paste a real run" panel ──────────────────────────────────────────
-// Collapsible profiler that lives above the sliders. Parses a real agent trace,
-// fills the config sliders, surfaces the measured cache-rate reveal, and renders
-// a cross-model effective-vs-nominal counterfactual table. Never crashes the page.
-function TracePanel({
-  config,
-  onProfiled,
-}: {
-  config: AgentConfig;
-  onProfiled: (cfg: AgentConfig) => void;
-}) {
-  const [open, setOpen] = useState(false);
+function PasteUsagePanel({ onApply }: { onApply: (cfg: AgentConfig) => void }) {
   const [raw, setRaw] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  // Set only after a successful profile — drives the reveal + counterfactual.
-  const [parsed, setParsed] = useState<ParsedRun | null>(null);
-  const [profiledConfig, setProfiledConfig] = useState<AgentConfig | null>(null);
-  const [costMode, setCostMode] = useState<"effective" | "nominal" | "retokenized">("effective");
-  // C5 — Task DNA override. null = use the auto-detected classifier verdict.
-  const [typeOverride, setTypeOverride] = useState<TaskType | null>(null);
-  const [complexityOverride, setComplexityOverride] =
-    useState<Complexity | null>(null);
+  const [applied, setApplied] = useState(false);
 
-  function handleProfile() {
+  const apply = () => {
     try {
-      const result = parseTrace(raw);
-      // parsedRunToConfig mutates result.warnings — call before reading warnings.
-      const cfg = parsedRunToConfig(result);
-      setParsed(result);
-      setProfiledConfig(cfg);
-      setWarnings(result.warnings);
+      const cfg = parseUsagePaste(raw);
+      onApply(cfg);
       setError(null);
-      // Fresh trace → drop any stale manual override so the new auto-verdict shows.
-      setTypeOverride(null);
-      setComplexityOverride(null);
-      onProfiled(cfg);
+      setApplied(true);
     } catch (e) {
-      // Defensive: typed parse errors get their message; anything else is wrapped.
-      if (e instanceof TraceParseError) {
-        setError(e.message);
-      } else if (e instanceof Error) {
-        setError(e.message);
-      } else {
-        setError("Could not parse this trace.");
-      }
-      setWarnings([]);
-      setParsed(null);
-      setProfiledConfig(null);
+      setApplied(false);
+      setError(e instanceof PasteUsageError ? e.message : "Could not parse paste.");
     }
-  }
-
-  // Counterfactual is driven by the profiled config (anchor = trace source model).
-  // Recomputes when the live config changes too, so slider tweaks re-project.
-  const projection = useMemo(() => {
-    if (!profiledConfig) return null;
-    return projectCounterfactual({ ...profiledConfig, ...sliderOverrides(config) });
-  }, [profiledConfig, config]);
-
-  const insight = useMemo(() => {
-    if (!profiledConfig) return null;
-    return cacheRateInsight({ ...profiledConfig, ...sliderOverrides(config) });
-  }, [profiledConfig, config]);
-
-  // For nominal mode, recompute each row without the verbosity multiplier so the
-  // Δ% and ordering reflect raw list-price cost. Effective mode uses the engine rows.
-  const rows = useMemo(() => {
-    if (!projection) return null;
-    if (costMode === "effective") return projection;
-    const merged = { ...profiledConfig!, ...sliderOverrides(config) };
-    const anchorId = merged.modelId;
-    const nominal = projection.map((p) => {
-      const breakdown = calculateCost(merged, p.model, { applyMultiplier: false });
-      return {
-        ...p,
-        breakdown,
-        effectiveOutputTokens: merged.outputTokensPerRun,
-        deltaVsAnchorPct: null as number | null,
-      };
-    });
-    const anchorMonthly = nominal.find((r) => r.model.id === anchorId)?.breakdown
-      .totalPerMonth;
-    if (anchorMonthly !== undefined && anchorMonthly !== 0) {
-      for (const r of nominal) {
-        if (r.isAnchor) r.deltaVsAnchorPct = null;
-        else
-          r.deltaVsAnchorPct =
-            Math.round(
-              ((r.breakdown.totalPerMonth - anchorMonthly) / anchorMonthly) *
-                1000,
-            ) / 10;
-      }
-    }
-    nominal.sort((a, b) => a.breakdown.totalPerMonth - b.breakdown.totalPerMonth);
-    return nominal;
-  }, [projection, costMode, profiledConfig, config]);
-
-  // C5 — Task DNA: classify the parsed run's behavioral signature. Pure +
-  // no-throw by contract, but wrap defensively so a bad trace never crashes.
-  const classification = useMemo<Classification | null>(() => {
-    if (!parsed) return null;
-    try {
-      return classifyTask(parsed);
-    } catch {
-      return null;
-    }
-  }, [parsed]);
-
-  // Effective profile = manual override falling back to the auto verdict.
-  const effectiveType: TaskType | null =
-    typeOverride ?? classification?.taskType ?? null;
-  const effectiveComplexity: Complexity | null =
-    complexityOverride ?? classification?.complexity ?? null;
-
-  // C5 — capability-floor recommendation. Re-runs when the override changes.
-  // Uses the profiled config merged with live slider tweaks (same basis the
-  // counterfactual table uses), so the saving matches what the table shows.
-  const recommendation = useMemo<Recommendation | null>(() => {
-    if (!parsed || !profiledConfig || !classification) return null;
-    if (!effectiveType || !effectiveComplexity) return null;
-    const merged = { ...profiledConfig, ...sliderOverrides(config) };
-    const cls: Classification = {
-      ...classification,
-      taskType: effectiveType,
-      complexity: effectiveComplexity,
-    };
-    try {
-      return recommend(parsed, cls, merged);
-    } catch {
-      return null;
-    }
-  }, [
-    parsed,
-    profiledConfig,
-    classification,
-    effectiveType,
-    effectiveComplexity,
-    config,
-  ]);
-
-  const typeOverridden = typeOverride !== null;
-  const complexityOverridden = complexityOverride !== null;
-
-  const anchorModel = profiledConfig
-    ? MODELS.find((m) => m.id === profiledConfig.modelId)
-    : undefined;
-  // Tooltip cites the multiplier provenance for the anchor's effective-cost math.
-  const multiplierTooltip = anchorModel
-    ? `Effective cost normalizes output tokens by each model's verbosity multiplier (baseline Claude Sonnet 4.6 = 1.0). Anchor ${anchorModel.name}: ${anchorModel.outputMultiplier}× · source: ${anchorModel.multiplierSource ?? "n/a"} · confidence: ${anchorModel.multiplierConfidence ?? "low"}.`
-    : "Effective cost normalizes output tokens by each model's verbosity multiplier.";
-
-  // Phase 2 — explains the retokenized counterfactual (distinct number kind from
-  // the effective-cost multiplierTooltip above: re-tokenizes the SAME captured
-  // text, no cache/batch, exact OpenAI / approx Claude-Gemini).
-  const retokenizedTooltip =
-    "Retokenized = re-tokenizes the CAPTURED output text under each model's tokenizer and prices it at list rates (no cache/batch). Exact for OpenAI (gpt-tokenizer), approx for Claude/Gemini (no official client-side tokenizer). Models the tokenizer effect on the SAME text — NOT model verbosity (Phase 3 replay).";
-
-  // Phase 1 ground-truth reconstruction: cost of the captured run on its ORIGINAL
-  // model, derived from provider raw_usage as billed (exact cache/batch rates,
-  // no verbosity estimate). Distinct from the heuristic projection below.
-  // Swallow ReconstructError (unknown usage shape / missing usage) so the page
-  // never crashes — same defensive posture as `error`/`warnings` above.
-  // Placed after anchorModel (declared just above) so it is in scope.
-  const reconstruction = useMemo(() => {
-    if (!parsed?.rawCalls?.length || !anchorModel) return null;
-    try {
-      return reconstructCost({ rawCalls: parsed.rawCalls, model: anchorModel });
-    } catch {
-      return null;
-    }
-  }, [parsed, anchorModel]);
-
-  // Phase 2 cost layer (docs/RESEARCH-validation-methodology.md §4.3, §3.2).
-  // Cost of the captured run re-tokenized under each model's tokenizer, priced
-  // at list rates (NO cache, NO batch — counterfactual default). Exact for
-  // OpenAI (gpt-tokenizer), approx for Claude/Gemini. Never reads
-  // model.outputMultiplier. Defensive try/catch so a bad trace never crashes.
-  const retokenizedRows = useMemo<RetokenizedCostRow[] | null>(() => {
-    if (!parsed?.rawCalls?.length) return null;
-    try {
-      return projectRetokenized(parsed.rawCalls);
-    } catch {
-      return null;
-    }
-  }, [parsed]);
+  };
 
   return (
-    <section className="border border-stone-200 rounded-xl bg-white overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-stone-50 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-stone-800">
-            Paste a real run
-          </span>
-          <span className="text-[10px] uppercase tracking-wider text-stone-400 border border-stone-200 rounded px-1.5 py-0.5">
-            profiler
-          </span>
-        </div>
-        <span className="text-stone-400 text-sm">{open ? "−" : "+"}</span>
-      </button>
-
-      {open && (
-        <div className="px-5 pb-5 space-y-4 border-t border-stone-100">
-          <p className="text-xs text-stone-500 leading-relaxed pt-4">
-            Paste an Anthropic Messages API response (JSON) or a Claude Code
-            session <code className="font-mono text-stone-600">.jsonl</code>. We
-            read the real token usage — including your measured cache hit rate —
-            then project effective cost across every model.
+    <details className="bg-white border border-stone-200 rounded-xl p-5 group">
+      <summary className="cursor-pointer list-none flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-500">
+            Paste usage
+          </h2>
+          <p className="text-xs text-stone-500 mt-1">
+            Optional: paste simple JSON or CSV to fill the sliders below.
           </p>
-          <textarea
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            placeholder='{ "model": "claude-sonnet-4-6", "usage": { "input_tokens": 1500, "output_tokens": 500, "cache_read_input_tokens": 8000, "cache_creation_input_tokens": 2000 } }'
-            spellCheck={false}
-            className="w-full h-32 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs font-mono text-stone-700 placeholder:text-stone-300 focus:outline-none focus:border-stone-400 resize-y"
-          />
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleProfile}
-              disabled={raw.trim() === ""}
-              className="text-sm px-4 py-2 rounded-lg bg-stone-800 text-white font-medium hover:bg-stone-700 disabled:bg-stone-200 disabled:text-stone-400 transition-colors"
-            >
-              Profile this run
-            </button>
-            {parsed && (
-              <span className="text-xs text-stone-400">
-                {parsed.runs} run{parsed.runs === 1 ? "" : "s"} parsed
-                {parsed.sourceModel ? ` · ${parsed.sourceModel}` : ""}
-              </span>
-            )}
-          </div>
-
-          {/* Inline error — never crashes the page */}
-          {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 space-y-1">
-              <p className="text-xs font-medium text-red-700">
-                Couldn&apos;t parse this run
-              </p>
-              <p className="text-xs text-red-600">{error}</p>
-            </div>
-          )}
-
-          {/* Warnings (non-fatal) */}
-          {warnings.length > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-1">
-              <p className="text-xs font-medium text-amber-700">
-                Parsed with {warnings.length} note
-                {warnings.length === 1 ? "" : "s"}
-              </p>
-              <ul className="text-xs text-amber-600 list-disc list-inside space-y-0.5">
-                {warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Cache-rate reveal — the hero moment */}
-          {insight && (
-            <div className="rounded-lg border border-stone-800 bg-stone-800 text-white px-4 py-3.5 space-y-1">
-              <p className="text-xs uppercase tracking-wider text-stone-400 font-semibold">
-                Cache-rate reveal
-              </p>
-              <p className="text-sm">
-                Your measured cache hit rate:{" "}
-                <span className="font-mono font-semibold text-base">
-                  {Math.round(insight.measured * 100)}%
-                </span>
-                .
-                {insight.monthlySavingAtNinety > 0 ? (
-                  <>
-                    {" "}
-                    At 90% you&apos;d save{" "}
-                    <span className="font-mono font-semibold text-amber-300">
-                      {formatCost(insight.monthlySavingAtNinety)}/mo
-                    </span>
-                    .
-                  </>
-                ) : (
-                  <span className="text-stone-300">
-                    {" "}
-                    Already at or above 90% — caching is well-tuned.
-                  </span>
-                )}
-              </p>
-            </div>
-          )}
-
-          {/* Reconstructed actual cost — ground truth from provider raw_usage */}
-          {reconstruction && reconstruction.totalComputed > 0 && (
-            <div className="rounded-lg border border-stone-300 bg-stone-50 px-4 py-3.5 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-stone-800">
-                  Reconstructed actual cost
-                </span>
-                <span className="text-[10px] uppercase tracking-wider text-stone-500 border border-stone-300 rounded px-1.5 py-0.5">
-                  ground truth
-                </span>
-              </div>
-              <div className="flex items-baseline gap-4">
-                <div>
-                  <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                    Total over {parsed!.runs} run{parsed!.runs === 1 ? "" : "s"}
-                  </span>
-                  <p className="text-lg font-mono font-semibold text-stone-900">
-                    {formatCost(reconstruction.totalComputed)}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                    Avg / run
-                  </span>
-                  <p className="text-sm font-mono text-stone-700">
-                    {formatCost(reconstruction.totalComputed / parsed!.runs)}
-                  </p>
-                </div>
-                {anchorModel && (
-                  <div>
-                    <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                      On original model
-                    </span>
-                    <p className="text-sm text-stone-700">{anchorModel.name}</p>
-                  </div>
-                )}
-              </div>
-              {reconstruction.warnings.length > 0 && (
-                <ul className="text-[11px] text-amber-700 list-disc list-inside space-y-0.5">
-                  {reconstruction.warnings.map((w, i) => (
-                    <li key={i}>{w}</li>
-                  ))}
-                </ul>
-              )}
-              <p className="text-[11px] text-stone-500 leading-relaxed">
-                Derived from the provider&rsquo;s raw token usage as billed —
-                exact cache read/write tiers and batch flag, no verbosity estimate.
-                This is what the captured run cost on its original model. Compare
-                to the projection below, which estimates cost on each model using
-                a per-model verbosity multiplier. Billed &plusmn;5% accuracy is
-                not verified (no invoice linked).
-              </p>
-            </div>
-          )}
-
-          {/* Counterfactual table */}
-          {rows && rows.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                  Cross-model projection
-                </h3>
-                {/* Effective ⇄ Nominal toggle */}
-                <div
-                  className="flex items-center gap-1 text-[11px]"
-                  title={multiplierTooltip}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setCostMode("effective")}
-                    className={`px-2 py-1 rounded-l-md border transition-colors ${
-                      costMode === "effective"
-                        ? "bg-stone-800 text-white border-stone-800"
-                        : "bg-white text-stone-500 border-stone-200 hover:text-stone-700"
-                    }`}
-                  >
-                    Effective
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCostMode("nominal")}
-                    className={`px-2 py-1 border -ml-px transition-colors ${
-                      costMode === "nominal"
-                        ? "bg-stone-800 text-white border-stone-800"
-                        : "bg-white text-stone-500 border-stone-200 hover:text-stone-700"
-                    }`}
-                  >
-                    Nominal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCostMode("retokenized")}
-                    disabled={retokenizedRows === null}
-                    title={
-                      retokenizedRows === null
-                        ? "Re-tokenize unavailable (no captured trace)."
-                        : retokenizedTooltip
-                    }
-                    className={`px-2 py-1 rounded-r-md border -ml-px transition-colors ${
-                      costMode === "retokenized"
-                        ? "bg-stone-800 text-white border-stone-800"
-                        : "bg-white text-stone-500 border-stone-200 hover:text-stone-700"
-                    }${retokenizedRows === null ? " opacity-40 cursor-not-allowed" : ""}`}
-                  >
-                    Retokenized
-                  </button>
-                  <span className="ml-1 text-stone-300 cursor-help" title={costMode === "retokenized" ? retokenizedTooltip : multiplierTooltip}>
-                    ⓘ
-                  </span>
-                </div>
-              </div>
-
-              {costMode !== "retokenized" && (
-                <>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-left text-stone-400 border-b border-stone-100">
-                      <th className="font-medium py-1.5 pr-2">Model</th>
-                      <th className="font-medium py-1.5 px-2 text-right">
-                        {costMode === "effective" ? "Eff. out tok" : "Out tok"}
-                      </th>
-                      <th className="font-medium py-1.5 px-2 text-right">
-                        $/mo
-                      </th>
-                      <th className="font-medium py-1.5 pl-2 text-right">
-                        Δ% vs run
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr
-                        key={r.model.id}
-                        className={`border-b border-stone-50 ${
-                          r.isAnchor ? "bg-stone-100" : ""
-                        }`}
-                      >
-                        <td className="py-1.5 pr-2">
-                          <span
-                            className={
-                              r.isAnchor
-                                ? "font-semibold text-stone-900"
-                                : "text-stone-600"
-                            }
-                          >
-                            {r.model.name}
-                          </span>
-                          {r.isAnchor && (
-                            <span className="ml-1.5 text-[9px] uppercase tracking-wider text-stone-500 border border-stone-300 rounded px-1 py-0.5">
-                              your run
-                            </span>
-                          )}
-                          {r.model.isOpen && (
-                            <span className="ml-1 text-[9px] uppercase tracking-wider text-stone-400">
-                              open
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-1.5 px-2 text-right font-mono text-stone-500">
-                          {Math.round(r.effectiveOutputTokens).toLocaleString()}
-                          {costMode === "effective" &&
-                            r.multiplierUsed !== 1 && (
-                              <span className="text-stone-300">
-                                {" "}
-                                ({r.multiplierUsed}×)
-                              </span>
-                            )}
-                        </td>
-                        <td
-                          className={`py-1.5 px-2 text-right font-mono ${
-                            r.isAnchor
-                              ? "font-semibold text-stone-900"
-                              : "text-stone-700"
-                          }`}
-                        >
-                          {formatCost(r.breakdown.totalPerMonth)}
-                        </td>
-                        <td className="py-1.5 pl-2 text-right font-mono">
-                          {r.deltaVsAnchorPct === null ? (
-                            <span className="text-stone-300">—</span>
-                          ) : (
-                            <span
-                              className={
-                                r.deltaVsAnchorPct < 0
-                                  ? "text-emerald-600"
-                                  : "text-red-500"
-                              }
-                            >
-                              {r.deltaVsAnchorPct > 0 ? "+" : ""}
-                              {r.deltaVsAnchorPct}%
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="text-[11px] text-stone-400 leading-relaxed">
-                {costMode === "effective"
-                  ? "Effective = output tokens normalized by each model's verbosity multiplier, then priced. Reasoning models emit more tokens per task."
-                  : "Nominal = raw list price at identical output tokens. Ignores that verbose/reasoning models emit more tokens per task."}
-              </p>
-                </>
-              )}
-
-              {costMode === "retokenized" && retokenizedRows && (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-stone-400 border-b border-stone-100">
-                          <th className="font-medium py-1.5 pr-2">Model</th>
-                          <th className="font-medium py-1.5 px-2 text-right">
-                            Target out tok
-                          </th>
-                          <th className="font-medium py-1.5 px-2 text-right">
-                            $/run
-                          </th>
-                          <th className="font-medium py-1.5 pl-2 text-right">
-                            Method
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {retokenizedRows.map((r) => (
-                          <tr
-                            key={r.model.id}
-                            className={`border-b border-stone-50 ${
-                              r.model.id === profiledConfig?.modelId
-                                ? "bg-stone-100"
-                                : ""
-                            }`}
-                          >
-                            <td className="py-1.5 pr-2">
-                              <span
-                                className={
-                                  r.model.id === profiledConfig?.modelId
-                                    ? "font-semibold text-stone-900"
-                                    : "text-stone-600"
-                                }
-                              >
-                                {r.model.name}
-                              </span>
-                              {r.model.id === profiledConfig?.modelId && (
-                                <span className="ml-1.5 text-[9px] uppercase tracking-wider text-stone-500 border border-stone-300 rounded px-1 py-0.5">
-                                  your run
-                                </span>
-                              )}
-                              {r.model.isOpen && (
-                                <span className="ml-1 text-[9px] uppercase tracking-wider text-stone-400">
-                                  open
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-1.5 px-2 text-right font-mono text-stone-500">
-                              {r.targetOutputTokens.toLocaleString()}
-                            </td>
-                            <td className="py-1.5 px-2 text-right font-mono text-stone-700">
-                              {formatCost(r.perRunCost)}
-                            </td>
-                            <td className="py-1.5 pl-2 text-right">
-                              <span
-                                title={r.notes.join(" ")}
-                                className={
-                                  r.isExact
-                                    ? "text-emerald-600 font-mono"
-                                    : "text-amber-600 font-mono"
-                                }
-                              >
-                                {r.method}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <p className="text-[11px] text-stone-400 leading-relaxed">
-                    Retokenized = the captured run&rsquo;s output text, re-tokenized under each model&rsquo;s tokenizer, priced at list rates (no cache, no batch). Exact for OpenAI; approx for Claude/Gemini. This isolates the tokenizer effect — it does NOT model a different model emitting more/fewer tokens (that is Phase 3 replay).
-                  </p>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ── C5 — Task DNA card ──────────────────────────────────────── */}
-          {parsed && classification && (
-            <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 space-y-4">
-              <div className="flex items-baseline justify-between gap-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-500">
-                  Task DNA
-                </h3>
-                <span className="text-[10px] text-stone-400">
-                  classified from your trace&rsquo;s behavior — adjust if it&rsquo;s
-                  off
-                </span>
-              </div>
-
-              {/* Detected type + complexity, each with a confidence indicator */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <div className="text-[10px] uppercase tracking-wider text-stone-400">
-                    Task type
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold text-stone-800 capitalize">
-                      {effectiveType ?? "unknown"}
-                    </span>
-                    {typeOverridden && (
-                      <span className="text-[9px] uppercase tracking-wider text-stone-500 border border-stone-300 rounded px-1 py-0.5">
-                        overridden
-                      </span>
-                    )}
-                  </div>
-                  <ConfidenceBar
-                    value={typeOverridden ? 1 : classification.taskTypeConfidence}
-                    label={
-                      typeOverridden
-                        ? "manual"
-                        : `${Math.round(
-                            (classification.taskTypeConfidence ?? 0) * 100,
-                          )}% confidence`
-                    }
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <div className="text-[10px] uppercase tracking-wider text-stone-400">
-                    Complexity
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold text-stone-800 capitalize">
-                      {effectiveComplexity ?? "unknown"}
-                    </span>
-                    {complexityOverridden && (
-                      <span className="text-[9px] uppercase tracking-wider text-stone-500 border border-stone-300 rounded px-1 py-0.5">
-                        overridden
-                      </span>
-                    )}
-                  </div>
-                  <ConfidenceBar
-                    value={
-                      complexityOverridden
-                        ? 1
-                        : classification.complexityConfidence
-                    }
-                    label={
-                      complexityOverridden
-                        ? "manual"
-                        : `${Math.round(
-                            (classification.complexityConfidence ?? 0) * 100,
-                          )}% confidence`
-                    }
-                  />
-                </div>
-              </div>
-
-              {/* Evidence chips */}
-              {classification.evidence && classification.evidence.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="text-[10px] uppercase tracking-wider text-stone-400">
-                    Evidence
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {classification.evidence.map((e, i) => (
-                      <span
-                        key={i}
-                        className="text-[11px] text-stone-600 bg-white border border-stone-200 rounded-full px-2.5 py-1"
-                      >
-                        {e}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Recommendation line */}
-              <div className="rounded-md border border-stone-200 bg-white px-4 py-3 space-y-1.5">
-                {recommendation && recommendation.recommended ? (
-                  <p className="text-sm text-stone-700">
-                    <span className="font-semibold">Cheapest capable:</span>{" "}
-                    <span className="font-semibold text-stone-900">
-                      {recommendation.recommended.name}
-                    </span>{" "}
-                    — save{" "}
-                    <span className="font-semibold font-mono">
-                      {formatCost(recommendation.monthlySaving)}/mo
-                    </span>
-                    .{" "}
-                    <span className="text-stone-500">
-                      Why: {recommendation.rationale}
-                    </span>
-                  </p>
-                ) : recommendation ? (
-                  <p className="text-sm text-stone-700">
-                    <span className="font-semibold">Already optimal.</span>{" "}
-                    <span className="text-stone-500">
-                      {recommendation.rationale}
-                    </span>
-                  </p>
-                ) : (
-                  <p className="text-sm text-stone-400">
-                    Recommendation unavailable — the anchor model couldn&rsquo;t be
-                    resolved from this trace. Use the cross-model table above to
-                    compare cost directly.
-                  </p>
-                )}
-                {recommendation &&
-                  recommendation.caveats &&
-                  recommendation.caveats.length > 0 && (
-                    <ul className="list-disc list-inside text-[11px] text-stone-400 space-y-0.5">
-                      {recommendation.caveats.map((c, i) => (
-                        <li key={i}>{c}</li>
-                      ))}
-                    </ul>
-                  )}
-              </div>
-
-              {/* Override controls — changing either re-runs the recommendation */}
-              <div className="space-y-2">
-                <div className="text-[10px] uppercase tracking-wider text-stone-400">
-                  Override — re-runs the recommendation
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block space-y-1">
-                    <span className="text-[11px] text-stone-500">Task type</span>
-                    <select
-                      value={typeOverride ?? ""}
-                      onChange={(e) =>
-                        setTypeOverride(
-                          e.target.value === ""
-                            ? null
-                            : (e.target.value as TaskType),
-                        )
-                      }
-                      className="w-full text-sm rounded-md border border-stone-200 bg-white px-2 py-1.5 text-stone-700 focus:outline-none focus:border-stone-400"
-                    >
-                      <option value="">Auto ({classification.taskType})</option>
-                      {(
-                        [
-                          "coding",
-                          "extraction",
-                          "research",
-                          "agentic",
-                          "reasoning",
-                          "chat",
-                        ] as TaskType[]
-                      ).map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block space-y-1">
-                    <span className="text-[11px] text-stone-500">Complexity</span>
-                    <select
-                      value={complexityOverride ?? ""}
-                      onChange={(e) =>
-                        setComplexityOverride(
-                          e.target.value === ""
-                            ? null
-                            : (e.target.value as Complexity),
-                        )
-                      }
-                      className="w-full text-sm rounded-md border border-stone-200 bg-white px-2 py-1.5 text-stone-700 focus:outline-none focus:border-stone-400"
-                    >
-                      <option value="">
-                        Auto ({classification.complexity})
-                      </option>
-                      {(["low", "med", "high"] as Complexity[]).map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                {(typeOverridden || complexityOverridden) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTypeOverride(null);
-                      setComplexityOverride(null);
-                    }}
-                    className="text-[11px] text-stone-400 hover:text-stone-700 underline underline-offset-2"
-                  >
-                    Reset to auto-detected
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
         </div>
-      )}
-    </section>
-  );
-}
+        <span className="text-stone-400 text-sm group-open:rotate-90 transition-transform">
+          ▸
+        </span>
+      </summary>
 
-// Pull only the user-tunable slider fields off the live config so the
-// counterfactual re-projects when the user nudges sliders after profiling,
-// while keeping the trace-derived anchor model fixed to the profiled run.
-function sliderOverrides(c: AgentConfig): Partial<AgentConfig> {
-  return {
-    systemPromptTokens: c.systemPromptTokens,
-    inputTokensPerRun: c.inputTokensPerRun,
-    outputTokensPerRun: c.outputTokensPerRun,
-    toolCallsPerRun: c.toolCallsPerRun,
-    tokensPerToolCall: c.tokensPerToolCall,
-    cacheHitRate: c.cacheHitRate,
-    runsPerDay: c.runsPerDay,
-  };
+      <div className="mt-4 space-y-3">
+        <textarea
+          value={raw}
+          onChange={(e) => {
+            setRaw(e.target.value);
+            setApplied(false);
+            setError(null);
+          }}
+          placeholder={PASTE_EXAMPLE}
+          rows={8}
+          className="w-full font-mono text-xs rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:border-stone-400"
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={apply}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-stone-800 text-white hover:bg-stone-700 transition-colors"
+          >
+            Apply to sliders
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setRaw(PASTE_EXAMPLE);
+              setError(null);
+              setApplied(false);
+            }}
+            className="text-xs text-stone-500 hover:text-stone-800 underline underline-offset-2"
+          >
+            Load example
+          </button>
+          {applied && (
+            <span className="text-xs text-emerald-700">Sliders updated.</span>
+          )}
+          {error && <span className="text-xs text-red-600">{error}</span>}
+        </div>
+        <p className="text-[11px] text-stone-400 leading-relaxed">
+          CSV header:{" "}
+          <code className="text-stone-500">
+            input_tokens,output_tokens,cached_tokens,tool_name,model_id
+          </code>
+        </p>
+      </div>
+    </details>
+  );
 }
 
 export default function Home() {
@@ -1107,16 +362,32 @@ export default function Home() {
   const [tierFilter, setTierFilter] = useState<Set<Tier>>(new Set());
   const [typeFilter, setTypeFilter] = useState<Set<"closed" | "open">>(new Set());
   const [strengthFilter, setStrengthFilter] = useState<Set<Strength>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [providerFilter, setProviderFilter] = useState("");
+  const [viewMode, setViewMode] = useState<"task" | "day" | "month">("task");
+  const [applyMultiplier, setApplyMultiplier] = useState(true);
 
   const set = <K extends keyof AgentConfig>(key: K, value: AgentConfig[K]) =>
     setConfig((c) => ({ ...c, [key]: value }));
 
-  const filteredModels = useMemo(
-    () => filterModels(MODELS, tierFilter, typeFilter, strengthFilter),
-    [tierFilter, typeFilter, strengthFilter]
+  const providers = useMemo(
+    () => Array.from(new Set(MODELS.map((m) => m.provider))).sort(),
+    [],
   );
 
-  // If the currently selected model is filtered out, fall back to first match
+  const filteredModels = useMemo(
+    () =>
+      filterModels(
+        MODELS,
+        tierFilter,
+        typeFilter,
+        strengthFilter,
+        searchQuery,
+        providerFilter,
+      ),
+    [tierFilter, typeFilter, strengthFilter, searchQuery, providerFilter],
+  );
+
   useEffect(() => {
     if (filteredModels.length === 0) return;
     if (!filteredModels.some((m) => m.id === config.modelId)) {
@@ -1132,53 +403,77 @@ export default function Home() {
       filteredModels
         .map((m) => ({
           model: m,
-          cost: calculateCost({ ...config, modelId: m.id }),
+          cost: calculateCost({ ...config, modelId: m.id }, m, {
+            applyMultiplier,
+          }),
         }))
-        .sort((a, b) => a.cost.totalPerRun - b.cost.totalPerRun),
-    [config, filteredModels]
+        .sort((a, b) => {
+          const getDisplayCost = (c: CostBreakdown) =>
+            viewMode === "task"
+              ? c.totalPerRun
+              : viewMode === "day"
+                ? c.totalPerDay
+                : c.totalPerMonth;
+          return getDisplayCost(a.cost) - getDisplayCost(b.cost);
+        }),
+    [config, filteredModels, applyMultiplier, viewMode],
   );
 
-  const maxCost = Math.max(...allBreakdowns.map((b) => b.cost.totalPerRun), 0);
+  const maxCost = Math.max(
+    ...allBreakdowns.map((b) =>
+      viewMode === "task"
+        ? b.cost.totalPerRun
+        : viewMode === "day"
+          ? b.cost.totalPerDay
+          : b.cost.totalPerMonth,
+    ),
+    0,
+  );
+
+  const PAGE_SIZE = 15;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    tierFilter,
+    typeFilter,
+    strengthFilter,
+    searchQuery,
+    providerFilter,
+    viewMode,
+    applyMultiplier,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(allBreakdowns.length / PAGE_SIZE));
+
+  const paginatedBreakdowns = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return allBreakdowns.slice(start, start + PAGE_SIZE);
+  }, [allBreakdowns, currentPage]);
+
   const activeFilterCount =
-    tierFilter.size + typeFilter.size + strengthFilter.size;
+    tierFilter.size +
+    typeFilter.size +
+    strengthFilter.size +
+    (searchQuery ? 1 : 0) +
+    (providerFilter ? 1 : 0);
 
   return (
     <main className="min-h-screen bg-stone-50 px-4 py-12">
       <div className="max-w-4xl mx-auto space-y-10">
-        {/* Header */}
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold text-stone-900 tracking-tight">
             Agent Cost Calculator
           </h1>
-          {/* Tab switcher */}
-          <div className="flex items-center gap-2 pt-2">
-            <a
-              href="/"
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-stone-800 text-white"
-            >
-              Cost Estimator
-            </a>
-            <a
-              href="/trace"
-              className="px-4 py-2 text-sm font-medium rounded-lg text-stone-500 hover:text-stone-700 hover:bg-stone-100 transition-colors"
-            >
-              Trace Analyzer
-            </a>
-          </div>
           <p className="text-stone-500 text-sm leading-relaxed max-w-xl">
             Model the real cost of running an AI agent — before you scale.
             Adjust inputs below to see cost per run, per day, and per month.
           </p>
         </div>
 
-        {/* S4 — Paste a real run (profiler) — sits above the sliders */}
-        <TracePanel config={config} onProfiled={(cfg) => setConfig(cfg)} />
+        <PasteUsagePanel onApply={setConfig} />
 
-                {/* A+B layout: compact config bar ABOVE the table, then full-width
-            model table. The old right-side Cost Estimate + Breakdown panel is
-            dropped — per-run cost lives in the table's "Cost / run" column.
-            ponytail: per-day/per-month + breakdown removed to match the
-            prototype; re-add a compact summary line if aggregate totals wanted. */}
         <section className="bg-white border border-stone-200 rounded-xl p-5">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-500 mb-4">
             Cost inputs
@@ -1223,7 +518,7 @@ export default function Home() {
             <Slider
               label="Tokens / tool call"
               value={config.tokensPerToolCall}
-              min={50}
+              min={0}
               max={2000}
               step={50}
               onChange={(v) => set("tokensPerToolCall", v)}
@@ -1252,7 +547,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Model selector + filters + full-width table */}
         <section className="space-y-3">
           <div className="flex items-baseline justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-500">
@@ -1263,8 +557,29 @@ export default function Home() {
             </span>
           </div>
 
-          {/* Filter rows */}
-          <div className="space-y-2">
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search models or providers..."
+                className="w-full text-xs rounded-lg border border-stone-200 bg-white px-3 py-2 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:border-stone-400"
+              />
+              <select
+                value={providerFilter}
+                onChange={(e) => setProviderFilter(e.target.value)}
+                className="w-full text-xs rounded-lg border border-stone-200 bg-white px-3 py-2 text-stone-800 focus:outline-none focus:border-stone-400"
+              >
+                <option value="">All Providers ({providers.length})</option>
+                {providers.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[10px] uppercase tracking-wider text-stone-500 mr-1">
                 Tier
@@ -1313,6 +628,8 @@ export default function Home() {
                   setTierFilter(new Set());
                   setTypeFilter(new Set());
                   setStrengthFilter(new Set());
+                  setSearchQuery("");
+                  setProviderFilter("");
                 }}
                 className="text-xs text-stone-400 hover:text-stone-700 underline underline-offset-2"
               >
@@ -1321,17 +638,84 @@ export default function Home() {
             )}
           </div>
 
-          {/* Model table — filtered models sorted cheapest-first, click a row
-              to select it. Tier-colored accents + strength pills. */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-100/80 p-3 rounded-lg border border-stone-200">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-500 mr-1">
+                View:
+              </span>
+              {(["task", "day", "month"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setViewMode(mode)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                    viewMode === mode
+                      ? "bg-stone-800 text-white shadow-sm"
+                      : "bg-white text-stone-700 border border-stone-200 hover:bg-stone-50"
+                  }`}
+                >
+                  {mode === "task"
+                    ? "Per Task"
+                    : mode === "day"
+                      ? `Per Day (${config.runsPerDay.toLocaleString()} runs)`
+                      : `Per Month (${(config.runsPerDay * 30).toLocaleString()} runs)`}
+                </button>
+              ))}
+            </div>
+
+            <label className="flex items-center gap-1.5 cursor-pointer text-xs text-stone-700 select-none">
+              <input
+                type="checkbox"
+                checked={applyMultiplier}
+                onChange={(e) => setApplyMultiplier(e.target.checked)}
+                className="rounded accent-stone-800 cursor-pointer"
+              />
+              <span className="font-medium">Reasoning Expansion</span>
+            </label>
+          </div>
+
           <ModelTable
-            rows={allBreakdowns}
+            rows={paginatedBreakdowns}
             maxCost={maxCost}
             selectedId={config.modelId}
+            viewMode={viewMode}
             onSelect={(id) => set("modelId", id)}
           />
+
+          {allBreakdowns.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+              <span className="text-xs text-stone-500">
+                Showing {(currentPage - 1) * PAGE_SIZE + 1}–
+                {Math.min(currentPage * PAGE_SIZE, allBreakdowns.length)} of{" "}
+                {allBreakdowns.length} models
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+                >
+                  Previous
+                </button>
+                <span className="text-xs font-mono font-medium text-stone-600 px-2">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  disabled={currentPage >= totalPages}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 disabled:opacity-40 disabled:hover:bg-white transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
-        {/* Footer */}
         <footer className="border-t border-stone-200 mt-8 pt-5 pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
             <p className="text-stone-600">
@@ -1344,15 +728,19 @@ export default function Home() {
               </a>{" "}
               <span className="text-stone-400">·</span>{" "}
               <span className="text-stone-500">
-                Pricing via OpenRouter + provider docs
-              </span>{" "}
-              <span className="text-stone-400">·</span>{" "}
-              <span className="text-stone-500">
-                Lineup curated from real-usage rankings
+                Pricing via{" "}
+                <a
+                  href="https://models.dev"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-stone-700 underline underline-offset-2 hover:text-stone-900"
+                >
+                  models.dev
+                </a>
               </span>
             </p>
             <p className="text-stone-400">
-              Prices fetched {PRICING_FETCHED_AT.slice(0, 10)} from OpenRouter
+              Fetched {PRICING_FETCHED_AT.slice(0, 10)} from models.dev/catalog.json
             </p>
           </div>
         </footer>

@@ -25,8 +25,16 @@ export type ModelCapability = {
   };
 };
 
+export type BenchmarkEntry = {
+  name: string;
+  score: number | string;
+  metric?: string;
+  source?: string;
+};
+
 export type Model = {
   id: string;
+  sourceId?: string;
   name: string;
   provider: string;
   isOpen: boolean;            // open-weights or open-API
@@ -44,16 +52,15 @@ export type Model = {
   outputMultiplier: number;
   multiplierSource?: string;
   multiplierConfidence?: "high" | "med" | "low";
-  // C3 — per-domain capability scores from RESEARCH-capability-matrix.md.
-  // Optional for backward compat. Models without capability data are excluded
-  // from recommendations (treated conservatively — see recommend.ts §4.3/Step 5).
+  // Optional capability / benchmark metadata from the sync pipeline (unused by UI).
   capability?: ModelCapability;
+  benchmarks?: BenchmarkEntry[];
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data pipeline — two layers (see scripts/model-catalog.ts):
 //   1. pricing.generated.json : machine-truthable, written by sync-models.ts
-//      from OpenRouter's /api/v1/models. Pricing, context window, provider.
+//      from models.dev /catalog.json. Pricing, context window, provider.
 //   2. Editorial catalog      : human judgment. Tier, strengths, outputMultiplier,
 //      capability scores. Lives in scripts/model-catalog.ts.
 // MODELS merges both at module load: editorial wins for judgment fields,
@@ -62,7 +69,7 @@ export type Model = {
 
 type GeneratedPricingEntry = {
   id: string;
-  openrouterSlug: string;
+  sourceId: string;
   name: string;
   provider: string;
   isOpen: boolean;
@@ -72,15 +79,21 @@ type GeneratedPricingEntry = {
   cacheReadPricePerM?: number;
   cacheWritePricePerM?: number;
   supportsCache: boolean;
+  benchmarks?: BenchmarkEntry[];
 };
 
 import generatedPricing from "./pricing.generated.json";
 import { EDITORIAL_CATALOG, type EditorialEntry } from "../../scripts/model-catalog";
 
-const PRICING_SNAPSHOT = generatedPricing as {
+export const PRICING_SNAPSHOT: {
   source: string;
   fetchedAt: string;
-  openRouterEndpoint: string;
+  sourceEndpoint: string;
+  models: GeneratedPricingEntry[];
+} = generatedPricing as unknown as {
+  source: string;
+  fetchedAt: string;
+  sourceEndpoint: string;
   models: GeneratedPricingEntry[];
 };
 
@@ -89,50 +102,43 @@ const PRICING_BY_ID = new Map<string, GeneratedPricingEntry>(
 );
 
 function buildModels(): Model[] {
-  return EDITORIAL_CATALOG.map((entry: EditorialEntry): Model => {
-    const gen = PRICING_BY_ID.get(entry.id);
-    if (!gen) {
-      // The editorial catalog lists a model that isn't in pricing.generated.json.
-      // This happens when sync-models.ts is run with --allow-missing (e.g. a
-      // vendor slug temporarily isn't listed on OpenRouter). Fall back to safe
-      // defaults so the app keeps rendering; the cost engine will still run but
-      // pricing will be visibly zero until the model is re-synced.
-      return {
-        id: entry.id,
-        name: entry.id,
-        provider: "Unknown",
-        isOpen: false,
-        tier: entry.tier,
-        strengths: entry.strengths,
-        contextK: 0,
-        inputPricePerM: 0,
-        outputPricePerM: 0,
-        supportsCache: false,
-        outputMultiplier: entry.outputMultiplier,
-        multiplierSource: entry.multiplierSource,
-        multiplierConfidence: entry.multiplierConfidence,
-        capability: entry.capability,
-      };
-    }
-    return {
-      id: entry.id,
+  const editorialById = new Map(EDITORIAL_CATALOG.map((e) => [e.id, e]));
+  const editorialBySourceId = new Map(
+    EDITORIAL_CATALOG.filter((e) => e.sourceId).map((e) => [e.sourceId, e])
+  );
+
+  const result: Model[] = [];
+  const processedIds = new Set<string>();
+
+  for (const gen of PRICING_SNAPSHOT.models) {
+    const ed = editorialBySourceId.get(gen.sourceId) ?? editorialById.get(gen.id);
+    const id = ed?.id ?? gen.id;
+    if (processedIds.has(id)) continue;
+    processedIds.add(id);
+
+    result.push({
+      id,
+      sourceId: gen.sourceId,
       name: gen.name,
       provider: gen.provider,
       isOpen: gen.isOpen,
-      tier: entry.tier,
-      strengths: entry.strengths,
+      tier: ed?.tier ?? (gen as any).tier ?? "budget",
+      strengths: ed?.strengths ?? (gen as any).strengths ?? ["general"],
       contextK: gen.contextK,
       inputPricePerM: gen.inputPricePerM,
       outputPricePerM: gen.outputPricePerM,
       cacheReadPricePerM: gen.cacheReadPricePerM,
       cacheWritePricePerM: gen.cacheWritePricePerM,
       supportsCache: gen.supportsCache,
-      outputMultiplier: entry.outputMultiplier,
-      multiplierSource: entry.multiplierSource,
-      multiplierConfidence: entry.multiplierConfidence,
-      capability: entry.capability,
-    };
-  });
+      outputMultiplier: ed?.outputMultiplier ?? (gen as any).outputMultiplier ?? 1.0,
+      multiplierSource: ed?.multiplierSource ?? (gen as any).multiplierSource,
+      multiplierConfidence: ed?.multiplierConfidence ?? (gen as any).multiplierConfidence,
+      capability: ed?.capability ?? (gen as any).capability,
+      benchmarks: gen.benchmarks,
+    });
+  }
+
+  return result;
 }
 
 export const MODELS: Model[] = buildModels();
@@ -247,8 +253,24 @@ export function filterModels(
   tiers: Set<Tier>,
   types: Set<"closed" | "open">,
   strengths: Set<Strength>,
+  searchQuery?: string,
+  provider?: string,
 ): Model[] {
+  const query = searchQuery?.trim().toLowerCase();
   return models.filter((m) => {
+    // Exclude non-LLM models (audio transcription like Whisper, text embeddings, zero-output price)
+    const nameLower = m.name.toLowerCase();
+    const idLower = m.id.toLowerCase();
+    if (
+      nameLower.includes("whisper") ||
+      nameLower.includes("embedding") ||
+      idLower.includes("whisper") ||
+      idLower.includes("embedding") ||
+      m.outputPricePerM === 0
+    ) {
+      return false;
+    }
+
     if (tiers.size > 0 && !tiers.has(m.tier)) return false;
     if (types.size > 0) {
       const t = m.isOpen ? "open" : "closed";
@@ -257,6 +279,13 @@ export function filterModels(
     if (strengths.size > 0) {
       const hasAny = m.strengths.some((s) => strengths.has(s));
       if (!hasAny) return false;
+    }
+    if (provider && provider !== "" && m.provider !== provider) return false;
+    if (query) {
+      const matchName = m.name.toLowerCase().includes(query);
+      const matchProvider = m.provider.toLowerCase().includes(query);
+      const matchId = m.id.toLowerCase().includes(query);
+      if (!matchName && !matchProvider && !matchId) return false;
     }
     return true;
   });
