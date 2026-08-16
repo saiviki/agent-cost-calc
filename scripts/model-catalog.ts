@@ -1,28 +1,31 @@
-// Editorial catalog — the HUMAN-authored layer of the model data pipeline.
+// Editorial catalog — the HUMAN-authored lineup.
 //
-// Two-layer model (see docs/DATA-PIPELINE.md):
-//   1. THIS FILE (editorial):     lineup membership, tier, specialization,
-//                                  outputMultiplier, capability scores.
-//                                 Human judgment. Checked in. NOT auto-generated.
-//   2. pricing.generated.json:    pricing, context window, isOpen, displayName.
-//                                 Machine-truthable. Auto-written by sync-models.ts
-//                                  from models.dev /catalog.json.
+// models.dev is a pricing/metadata source for these entries only.
+// New upstream models are never auto-added. See docs/DATA-PIPELINE.md.
 //
-// The two are joined in src/lib/models.ts at module load. Editorial wins for
-// judgment fields; generated wins for volatile fields. New models.dev models
-// that aren't listed here surface as a warning in the sync report — they are
-// NEVER silently added (lineup curation is intentional, see README).
-//
-// `sourceId` is the metadata key — it must match the canonical id in
-// models.dev's /catalog.json `models` map (`<lab>/<model-slug>`).
+// Missing-mapping policy:
+//   - Live mapping requires an explicit sourceId (`<lab>/<model-slug>`).
+//   - Price comes from the lab's own models.dev provider listing first.
+//   - If that listing has no price, `fallbackProvider` (if set) is used.
+//   - No silent scan of other hosts. Ambiguous/unpriced mappings are
+//     carried-forward from the last snapshot, or refresh fails if none exists.
+//   - Empty sourceId means "no live mapping" and is always carried-forward.
 
 import type { Tier, Strength, CapabilityConfidence } from "../src/lib/models";
 
 export type EditorialEntry = {
   /** Local id used throughout the app. Stable across slug renames. */
   id: string;
-  /** models.dev canonical id (`<lab>/<model-slug>`), the `id` key in /catalog.json models map. */
+  /**
+   * models.dev canonical id (`<lab>/<model-slug>`).
+   * Empty string = no live mapping; snapshot must carry last-known prices.
+   */
   sourceId: string;
+  /**
+   * models.dev provider id used only when the lab listing has no price.
+   * Example: "together" for an open-weights model Meta does not sell directly.
+   */
+  fallbackProvider?: string;
   tier: Tier;
   strengths: Strength[];
   /**
@@ -174,8 +177,9 @@ export const EDITORIAL_CATALOG: EditorialEntry[] = [
   },
   {
     id: "grok-4.1-fast",
-    // CARRY-FORWARD: pending re-listing or lineup refresh; closest models.dev id: xai/grok-4.3
-    sourceId: "",
+    // Metadata exists at xai/grok-4.1-fast; no provider currently lists a price.
+    // Do not silently remap to grok-4.3 / 4.5 / 4.6.
+    sourceId: "xai/grok-4.1-fast",
     tier: "mid",
     strengths: ["long-context", "fast"],
     outputMultiplier: 0.31,

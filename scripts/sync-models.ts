@@ -1,40 +1,39 @@
-// sync-models.ts — fetches complete model catalog from models.dev and writes the generated
-// pricing snapshot consumed by src/lib/models.ts.
+// sync-models.ts — refreshes the curated pricing snapshot from models.dev.
 //
-// Dynamic Pipeline Architecture (see docs/DATA-PIPELINE.md):
-//   - Ingests ALL models with valid pricing from models.dev/catalog.json (~200+ models).
-//   - Merges curated judgment from scripts/model-catalog.ts when matching sourceId exists.
-//   - Automatically infers tier, strengths, capability scores, and multipliers for all other models.
+// The user-facing lineup is the editorial catalog only. models.dev supplies
+// volatile pricing/metadata for those entries. New upstream models are never
+// auto-added. See docs/DATA-PIPELINE.md.
 //
 // Usage:
-//   npm run sync-models                      # fetch + write src/lib/pricing.generated.json
-//   npm run sync-models:check                # exit 1 if drift vs checked-in snapshot
-//
-// Output: src/lib/pricing.generated.json + a human-readable diff to stdout.
+//   npm run sync-models:refresh   # fetch models.dev and rewrite the snapshot
+//   npm run sync-models           # same
+//   npm run sync-models:check     # offline, deterministic validation (no network)
 
 import { writeFileSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { EDITORIAL_CATALOG, type EditorialEntry } from "./model-catalog";
+import { EDITORIAL_CATALOG } from "./model-catalog";
 import type { Catalog } from "./models-dev-types";
 import {
   costToGenerated,
-  pickLabProviderCost,
+  labDisplayName,
+  markCarriedForward,
+  metadataToDisplayName,
+  pickEditorialPrice,
+  splitSourceId,
   type GeneratedPricing,
 } from "./models-dev-mappers";
+import {
+  formatValidationIssues,
+  validatePricingSnapshot,
+  type PricingSnapshot,
+} from "./validate-pricing-snapshot";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = dirname(__dirname);
 const OUTPUT_PATH = join(ROOT, "src", "lib", "pricing.generated.json");
 const MODELS_DEV_CATALOG_ENDPOINT = "https://models.dev/catalog.json";
-
-type Snapshot = {
-  source: string;
-  fetchedAt: string; // ISO 8601
-  sourceEndpoint: string;
-  models: GeneratedPricing[];
-};
 
 function fail(msg: string): never {
   console.error(`Error: ${msg}`);
@@ -47,7 +46,7 @@ async function fetchCatalog(): Promise<Catalog> {
   });
   if (!res.ok) {
     fail(
-      `models.dev returned HTTP ${res.status}: ${await res.text().catch(() => "<no body>")}`
+      `models.dev returned HTTP ${res.status}: ${await res.text().catch(() => "<no body>")}`,
     );
   }
   const json = (await res.json()) as Catalog;
@@ -57,89 +56,98 @@ async function fetchCatalog(): Promise<Catalog> {
   return json;
 }
 
-function buildSnapshot(
+export function buildCuratedSnapshot(
   catalog: Catalog,
-  opts: { allowMissing?: boolean; carryForward?: GeneratedPricing[] }
-): { snapshot: Snapshot; missing: string[]; carriedForward: string[] } {
+  opts: { fetchedAt: string; carryForward?: GeneratedPricing[] },
+): {
+  snapshot: PricingSnapshot;
+  missing: string[];
+  carriedForward: string[];
+  unresolved: string[];
+} {
+  const prevById = new Map((opts.carryForward ?? []).map((m) => [m.id, m]));
   const models: GeneratedPricing[] = [];
   const missing: string[] = [];
   const carriedForward: string[] = [];
+  const unresolved: string[] = [];
 
-  const prevById = new Map((opts.carryForward ?? []).map((m) => [m.id, m]));
-  const prevBySourceId = new Map(
-    (opts.carryForward ?? []).filter((m) => m.sourceId).map((m) => [m.sourceId, m])
-  );
+  for (const entry of EDITORIAL_CATALOG) {
+    const prev = prevById.get(entry.id);
 
-  // Map editorial entries by sourceId and by local id
-  const editorialBySourceId = new Map<string, EditorialEntry>();
-  const editorialById = new Map<string, EditorialEntry>();
-  for (const ed of EDITORIAL_CATALOG) {
-    if (ed.sourceId) editorialBySourceId.set(ed.sourceId, ed);
-    editorialById.set(ed.id, ed);
-  }
-
-  // Deduplicate IDs across all models.dev entries
-  const usedIds = new Set<string>();
-
-  const catalogModelKeys = Object.keys(catalog.models).sort();
-
-  for (const sourceId of catalogModelKeys) {
-    const metadata = catalog.models[sourceId];
-    const costPicked = pickLabProviderCost(catalog, sourceId);
-
-    // Skip models that have no pricing anywhere
-    if (!costPicked || !costPicked.cost || ((costPicked.cost.input ?? 0) === 0 && (costPicked.cost.output ?? 0) === 0)) {
+    if (!entry.sourceId) {
+      if (!prev) {
+        unresolved.push(entry.id);
+        continue;
+      }
+      carriedForward.push(entry.id);
+      models.push(markCarriedForward(prev, { id: entry.id, sourceId: "" }));
       continue;
     }
 
-    const edEntry = editorialBySourceId.get(sourceId);
-    let gen = costToGenerated(sourceId, metadata, costPicked, edEntry);
+    const metadata = catalog.models[entry.sourceId];
+    const picked = pickEditorialPrice(
+      catalog,
+      entry.sourceId,
+      entry.fallbackProvider,
+    );
 
-    // Ensure unique local id if there is a collision
-    if (usedIds.has(gen.id)) {
-      const parts = sourceId.split("/");
-      const uniqueId = `${parts[0]}-${parts[1] || gen.id}`;
-      gen = { ...gen, id: uniqueId };
-    }
-
-    usedIds.add(gen.id);
-    models.push(gen);
-  }
-
-  // Check if any editorial entries were missing from models.dev catalog and carry forward if available
-  for (const ed of EDITORIAL_CATALOG) {
-    if (!usedIds.has(ed.id)) {
-      const prev = prevById.get(ed.id);
-      if (prev) {
-        carriedForward.push(ed.id);
-        models.push(prev);
-        usedIds.add(ed.id);
-      } else {
-        missing.push(ed.id);
+    if (!picked) {
+      missing.push(`${entry.id} (${entry.sourceId})`);
+      if (!prev) {
+        unresolved.push(entry.id);
+        continue;
       }
+      carriedForward.push(entry.id);
+      const carried = markCarriedForward(prev, {
+        id: entry.id,
+        sourceId: entry.sourceId,
+      });
+      if (metadata) {
+        carried.name = metadataToDisplayName(metadata, entry.sourceId) || carried.name;
+        if (metadata.limit?.context) {
+          carried.contextK = Math.round(metadata.limit.context / 1000);
+        }
+        if (typeof metadata.open_weights === "boolean") {
+          carried.isOpen = metadata.open_weights;
+        }
+        carried.modelDeveloper =
+          labDisplayName(splitSourceId(entry.sourceId).lab) || carried.modelDeveloper;
+      }
+      models.push(carried);
+      continue;
     }
+
+    models.push(
+      costToGenerated(entry, metadata, picked, {
+        fetchedAt: opts.fetchedAt,
+        pricingStatus: "live",
+      }),
+    );
   }
 
-  const snapshot: Snapshot = {
-    source: "models.dev /catalog.json",
-    fetchedAt: new Date().toISOString(),
-    sourceEndpoint: MODELS_DEV_CATALOG_ENDPOINT,
-    models,
+  return {
+    snapshot: {
+      source: "models.dev /catalog.json",
+      fetchedAt: opts.fetchedAt,
+      sourceEndpoint: MODELS_DEV_CATALOG_ENDPOINT,
+      models,
+    },
+    missing,
+    carriedForward,
+    unresolved,
   };
-
-  return { snapshot, missing, carriedForward };
 }
 
-function readExisting(): Snapshot | null {
+function readExisting(): PricingSnapshot | null {
   try {
     const raw = readFileSync(OUTPUT_PATH, "utf8");
-    return JSON.parse(raw) as Snapshot;
+    return JSON.parse(raw) as PricingSnapshot;
   } catch {
     return null;
   }
 }
 
-function diffSnapshots(prev: Snapshot | null, next: Snapshot): string[] {
+function diffSnapshots(prev: PricingSnapshot | null, next: PricingSnapshot): string[] {
   const lines: string[] = [];
   if (!prev) {
     lines.push("No existing snapshot — writing initial pricing.generated.json.");
@@ -152,7 +160,7 @@ function diffSnapshots(prev: Snapshot | null, next: Snapshot): string[] {
     const p = prevById.get(id);
     if (!p) {
       lines.push(
-        `+ ${id}: added (input=${n.inputPricePerM}, output=${n.outputPricePerM})`
+        `+ ${id}: added (input=${n.inputPricePerM}, output=${n.outputPricePerM}, via ${n.pricingProvider})`,
       );
       continue;
     }
@@ -166,13 +174,13 @@ function diffSnapshots(prev: Snapshot | null, next: Snapshot): string[] {
       "isOpen",
       "supportsCache",
       "name",
-      "provider",
+      "modelDeveloper",
+      "pricingProvider",
+      "pricingStatus",
     ];
     for (const f of fields) {
-      const a = p[f];
-      const b = n[f];
-      if (a !== b) {
-        lines.push(`~ ${id}.${f}: ${String(a)} -> ${String(b)}`);
+      if (p[f] !== n[f]) {
+        lines.push(`~ ${id}.${f}: ${String(p[f])} -> ${String(n[f])}`);
       }
     }
   }
@@ -183,54 +191,90 @@ function diffSnapshots(prev: Snapshot | null, next: Snapshot): string[] {
   return lines;
 }
 
-async function main(): Promise<void> {
-  const args = new Set(process.argv.slice(2));
-  const check = args.has("--check");
-  const allowMissing = args.has("--allow-missing");
-
+function runCheck(): void {
   const existing = readExisting();
+  if (!existing) {
+    fail(`Missing ${OUTPUT_PATH}. Run npm run sync-models:refresh.`);
+  }
+  const issues = validatePricingSnapshot(existing, EDITORIAL_CATALOG);
+  const errors = issues.filter((i) => i.level === "error");
+  const warnings = issues.filter((i) => i.level === "warning");
 
-  if (check) {
-    const catalog = await fetchCatalog();
-    const { snapshot: next } = buildSnapshot(catalog, {
-      allowMissing: true,
-      carryForward: existing?.models,
-    });
-    const prev = existing;
-    const lines = diffSnapshots(prev, next);
-    const hasRealChange = lines.some(
-      (l) => l.startsWith("~") || l.startsWith("+") || l.startsWith("-")
+  console.log("[sync-models --check] offline validation of checked-in snapshot");
+  for (const line of formatValidationIssues(issues)) {
+    if (line.startsWith("[error]")) console.error("  " + line);
+    else console.warn("  " + line);
+  }
+  if (warnings.length === 0 && errors.length === 0) {
+    console.log("  [ok] snapshot schema, coverage, and provenance are valid.");
+  }
+  if (errors.length > 0) {
+    console.error(
+      `\n${errors.length} validation error(s). Fix the snapshot or editorial catalog.`,
     );
-    console.log("[sync-models --check] diff vs checked-in snapshot:");
-    for (const l of lines) console.log("  " + l);
-    if (hasRealChange) {
-      console.error(
-        "\nDrift detected — run `npm run sync-models` locally and commit the result."
-      );
-      process.exit(1);
-    }
-    console.log("Snapshot is up to date.");
-    return;
+    process.exit(1);
+  }
+  console.log(
+    `Snapshot is valid (${existing.models.length} curated models, ${warnings.length} warning(s)).`,
+  );
+}
+
+async function runRefresh(): Promise<void> {
+  const existing = readExisting();
+  const fetchedAt = new Date().toISOString();
+  const catalog = await fetchCatalog();
+  const { snapshot, missing, carriedForward, unresolved } = buildCuratedSnapshot(
+    catalog,
+    { fetchedAt, carryForward: existing?.models },
+  );
+
+  if (unresolved.length > 0) {
+    fail(
+      `No live price and no previous snapshot for: ${unresolved.join(", ")}.\n` +
+        `Set sourceId / fallbackProvider in scripts/model-catalog.ts, or seed pricing.generated.json.`,
+    );
   }
 
-  const catalog = await fetchCatalog();
-  const { snapshot, missing, carriedForward } = buildSnapshot(catalog, {
-    allowMissing,
-    carryForward: existing?.models,
-  });
+  const issues = validatePricingSnapshot(snapshot, EDITORIAL_CATALOG);
+  const errors = issues.filter((i) => i.level === "error");
+  if (errors.length > 0) {
+    for (const line of formatValidationIssues(errors)) console.error(line);
+    fail("Refreshed snapshot failed validation.");
+  }
 
-  const prev = existing;
-  const lines = diffSnapshots(prev, snapshot);
-  console.log("[sync-models] writing src/lib/pricing.generated.json");
+  const lines = diffSnapshots(existing, snapshot);
+  console.log("[sync-models --refresh] writing src/lib/pricing.generated.json");
   for (const l of lines) console.log("  " + l);
+  if (missing.length > 0) {
+    console.warn("\n[warn] No direct or configured-fallback price on models.dev:");
+    for (const s of missing) console.warn("  - " + s);
+  }
   if (carriedForward.length > 0) {
-    console.warn("\n[warn] Carried forward last-known pricing (delisted or pending remap):");
+    console.warn("\n[warn] Carried forward last-known pricing:");
     for (const id of carriedForward) console.warn("  - " + id);
   }
 
-  const json = JSON.stringify(snapshot, null, 2) + "\n";
-  writeFileSync(OUTPUT_PATH, json, "utf8");
-  console.log(`\nWrote ${snapshot.models.length} models to ${OUTPUT_PATH}`);
+  writeFileSync(OUTPUT_PATH, JSON.stringify(snapshot, null, 2) + "\n", "utf8");
+  console.log(`\nWrote ${snapshot.models.length} curated models to ${OUTPUT_PATH}`);
+}
+
+async function main(): Promise<void> {
+  const args = new Set(process.argv.slice(2));
+  const check = args.has("--check");
+  const refresh = args.has("--refresh") || (!check && args.size === 0);
+
+  if (check && args.has("--refresh")) {
+    fail("Pass either --check or --refresh, not both.");
+  }
+  if (check) {
+    runCheck();
+    return;
+  }
+  if (refresh) {
+    await runRefresh();
+    return;
+  }
+  fail("Usage: tsx scripts/sync-models.ts --refresh | --check");
 }
 
 main().catch((err) => {

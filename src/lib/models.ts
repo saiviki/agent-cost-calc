@@ -7,11 +7,10 @@ export type Strength =
   | "fast"
   | "general";
 
-// C3 — per-domain capability scores (0–100). See docs/RESEARCH-capability-matrix.md.
 export type CapabilityScores = {
-  coding: number; // 0–100
-  reasoning: number; // 0–100
-  general: number; // 0–100
+  coding: number;
+  reasoning: number;
+  general: number;
 };
 
 export type CapabilityConfidence = "high" | "med" | "low";
@@ -25,53 +24,43 @@ export type ModelCapability = {
   };
 };
 
-export type BenchmarkEntry = {
-  name: string;
-  score: number | string;
-  metric?: string;
-  source?: string;
-};
+export type PricingStatus = "live" | "carried-forward";
 
 export type Model = {
   id: string;
   sourceId?: string;
   name: string;
+  /** Lab / developer that trained the model. */
+  modelDeveloper: string;
+  /** Host whose listed price was selected. May differ from modelDeveloper. */
+  pricingProvider: string;
+  pricingStatus: PricingStatus;
+  pricingFetchedAt?: string;
+  /** Alias of modelDeveloper for search/filter compatibility. */
   provider: string;
-  isOpen: boolean;            // open-weights or open-API
+  isOpen: boolean;
   tier: Tier;
   strengths: Strength[];
-  contextK: number;            // context window in K tokens
+  contextK: number;
   inputPricePerM: number;
   outputPricePerM: number;
   cacheReadPricePerM?: number;
   cacheWritePricePerM?: number;
   supportsCache: boolean;
-  // S1 — output-token verbosity multiplier (effective output-tokens-per-task
-  // relative to Claude Sonnet 4.6 non-reasoning = 1.0). See
-  // docs/RESEARCH-consumption-multipliers.md. Default 1.0 when unknown.
   outputMultiplier: number;
   multiplierSource?: string;
   multiplierConfidence?: "high" | "med" | "low";
-  // Optional capability / benchmark metadata from the sync pipeline (unused by UI).
   capability?: ModelCapability;
-  benchmarks?: BenchmarkEntry[];
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Data pipeline — two layers (see scripts/model-catalog.ts):
-//   1. pricing.generated.json : machine-truthable, written by sync-models.ts
-//      from models.dev /catalog.json. Pricing, context window, provider.
-//   2. Editorial catalog      : human judgment. Tier, strengths, outputMultiplier,
-//      capability scores. Lives in scripts/model-catalog.ts.
-// MODELS merges both at module load: editorial wins for judgment fields,
-// generated wins for volatile fields. Update pricing via `npm run sync-models`.
-// ─────────────────────────────────────────────────────────────────────────────
 
 type GeneratedPricingEntry = {
   id: string;
   sourceId: string;
   name: string;
-  provider: string;
+  modelDeveloper: string;
+  pricingProvider: string;
+  pricingStatus: PricingStatus;
+  pricingFetchedAt?: string;
   isOpen: boolean;
   contextK: number;
   inputPricePerM: number;
@@ -79,11 +68,10 @@ type GeneratedPricingEntry = {
   cacheReadPricePerM?: number;
   cacheWritePricePerM?: number;
   supportsCache: boolean;
-  benchmarks?: BenchmarkEntry[];
 };
 
 import generatedPricing from "./pricing.generated.json";
-import { EDITORIAL_CATALOG, type EditorialEntry } from "../../scripts/model-catalog";
+import { EDITORIAL_CATALOG } from "../../scripts/model-catalog";
 
 export const PRICING_SNAPSHOT: {
   source: string;
@@ -102,39 +90,35 @@ const PRICING_BY_ID = new Map<string, GeneratedPricingEntry>(
 );
 
 function buildModels(): Model[] {
-  const editorialById = new Map(EDITORIAL_CATALOG.map((e) => [e.id, e]));
-  const editorialBySourceId = new Map(
-    EDITORIAL_CATALOG.filter((e) => e.sourceId).map((e) => [e.sourceId, e])
-  );
-
   const result: Model[] = [];
-  const processedIds = new Set<string>();
 
-  for (const gen of PRICING_SNAPSHOT.models) {
-    const ed = editorialBySourceId.get(gen.sourceId) ?? editorialById.get(gen.id);
-    const id = ed?.id ?? gen.id;
-    if (processedIds.has(id)) continue;
-    processedIds.add(id);
+  for (const ed of EDITORIAL_CATALOG) {
+    const gen = PRICING_BY_ID.get(ed.id);
+    if (!gen) continue;
 
+    const modelDeveloper = gen.modelDeveloper;
     result.push({
-      id,
-      sourceId: gen.sourceId,
+      id: ed.id,
+      sourceId: gen.sourceId || ed.sourceId || undefined,
       name: gen.name,
-      provider: gen.provider,
+      modelDeveloper,
+      pricingProvider: gen.pricingProvider,
+      pricingStatus: gen.pricingStatus,
+      pricingFetchedAt: gen.pricingFetchedAt,
+      provider: modelDeveloper,
       isOpen: gen.isOpen,
-      tier: ed?.tier ?? (gen as any).tier ?? "budget",
-      strengths: ed?.strengths ?? (gen as any).strengths ?? ["general"],
+      tier: ed.tier,
+      strengths: ed.strengths,
       contextK: gen.contextK,
       inputPricePerM: gen.inputPricePerM,
       outputPricePerM: gen.outputPricePerM,
       cacheReadPricePerM: gen.cacheReadPricePerM,
       cacheWritePricePerM: gen.cacheWritePricePerM,
       supportsCache: gen.supportsCache,
-      outputMultiplier: ed?.outputMultiplier ?? (gen as any).outputMultiplier ?? 1.0,
-      multiplierSource: ed?.multiplierSource ?? (gen as any).multiplierSource,
-      multiplierConfidence: ed?.multiplierConfidence ?? (gen as any).multiplierConfidence,
-      capability: ed?.capability ?? (gen as any).capability,
-      benchmarks: gen.benchmarks,
+      outputMultiplier: ed.outputMultiplier,
+      multiplierSource: ed.multiplierSource,
+      multiplierConfidence: ed.multiplierConfidence,
+      capability: ed.capability,
     });
   }
 
@@ -143,7 +127,6 @@ function buildModels(): Model[] {
 
 export const MODELS: Model[] = buildModels();
 
-// Exposed for diagnostics / the sync report. Not used by the cost engine.
 export const PRICING_FETCHED_AT: string = PRICING_SNAPSHOT.fetchedAt;
 export const PRICING_SOURCE: string = PRICING_SNAPSHOT.source;
 
@@ -182,14 +165,9 @@ export type CostBreakdown = {
   totalPerRun: number;
   totalPerDay: number;
   totalPerMonth: number;
-  // S1 — additive. Equals outputTokensPerRun when applyMultiplier=false (default),
-  // equals outputTokensPerRun * model.outputMultiplier when applyMultiplier=true.
   effectiveOutputTokens: number;
 };
 
-// S1 — signature is additive: `model` and `options` are optional, so existing
-// `calculateCost(config)` callers are unchanged. `applyMultiplier` defaults to
-// `false`, preserving the exact prior output for every existing caller.
 export function calculateCost(
   config: AgentConfig,
   model?: Model,
@@ -209,9 +187,12 @@ export function calculateCost(
   const cachedInputCost = resolvedModel.cacheReadPricePerM
     ? (cachedTokens / 1_000_000) * resolvedModel.cacheReadPricePerM
     : 0;
-  const cacheWriteCost = resolvedModel.cacheWritePricePerM && config.cacheHitRate < 1
-    ? (config.systemPromptTokens / 1_000_000) * resolvedModel.cacheWritePricePerM * (1 - config.cacheHitRate)
-    : 0;
+  const cacheWriteCost =
+    resolvedModel.cacheWritePricePerM && config.cacheHitRate < 1
+      ? (config.systemPromptTokens / 1_000_000) *
+        resolvedModel.cacheWritePricePerM *
+        (1 - config.cacheHitRate)
+      : 0;
 
   const effectiveOutputTokens = options?.applyMultiplier
     ? config.outputTokensPerRun * resolvedModel.outputMultiplier
@@ -221,10 +202,11 @@ export function calculateCost(
     (effectiveOutputTokens / 1_000_000) * resolvedModel.outputPricePerM;
 
   const toolCallCost =
-    (config.toolCallsPerRun * config.tokensPerToolCall) / 1_000_000 *
+    ((config.toolCallsPerRun * config.tokensPerToolCall) / 1_000_000) *
     ((resolvedModel.inputPricePerM + resolvedModel.outputPricePerM) / 2);
 
-  const totalPerRun = inputCost + cachedInputCost + cacheWriteCost + outputCost + toolCallCost;
+  const totalPerRun =
+    inputCost + cachedInputCost + cacheWriteCost + outputCost + toolCallCost;
   const totalPerDay = totalPerRun * config.runsPerDay;
   const totalPerMonth = totalPerDay * 30;
 
@@ -258,19 +240,6 @@ export function filterModels(
 ): Model[] {
   const query = searchQuery?.trim().toLowerCase();
   return models.filter((m) => {
-    // Exclude non-LLM models (audio transcription like Whisper, text embeddings, zero-output price)
-    const nameLower = m.name.toLowerCase();
-    const idLower = m.id.toLowerCase();
-    if (
-      nameLower.includes("whisper") ||
-      nameLower.includes("embedding") ||
-      idLower.includes("whisper") ||
-      idLower.includes("embedding") ||
-      m.outputPricePerM === 0
-    ) {
-      return false;
-    }
-
     if (tiers.size > 0 && !tiers.has(m.tier)) return false;
     if (types.size > 0) {
       const t = m.isOpen ? "open" : "closed";
@@ -280,12 +249,18 @@ export function filterModels(
       const hasAny = m.strengths.some((s) => strengths.has(s));
       if (!hasAny) return false;
     }
-    if (provider && provider !== "" && m.provider !== provider) return false;
+    if (provider && provider !== "" && m.modelDeveloper !== provider) return false;
     if (query) {
-      const matchName = m.name.toLowerCase().includes(query);
-      const matchProvider = m.provider.toLowerCase().includes(query);
-      const matchId = m.id.toLowerCase().includes(query);
-      if (!matchName && !matchProvider && !matchId) return false;
+      const haystack = [
+        m.name,
+        m.modelDeveloper,
+        m.pricingProvider,
+        m.id,
+        m.sourceId ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(query)) return false;
     }
     return true;
   });
