@@ -20,21 +20,28 @@ export type UsagePaste = {
   spans: UsageSpan[];
 };
 
-const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
-const DEFAULT_RUNS_PER_DAY = 100;
+/** Slider-facing fields produced by a paste. `runsPerDay` is not in the paste. */
+export type ParsedUsageConfig = Omit<AgentConfig, "runsPerDay">;
+
+export const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
+export const MAX_PASTE_CHARS = 64 * 1024;
+export const MAX_TOKEN_VALUE = 10_000_000;
 
 /**
  * Mapping (one paste = one agent run):
- * - systemPromptTokens = 0 (format has no system field)
+ * - systemPromptTokens = 0 (format has no system field; this is intentional)
  * - inputTokensPerRun = Σ input_tokens
  * - outputTokensPerRun = Σ output_tokens
  * - toolCallsPerRun = count of spans with a non-empty tool_name
- * - tokensPerToolCall = 0 (span tokens already sit in input/output; avoids double-count in calculateCost)
- * - cacheHitRate = Σ cached_tokens / Σ input_tokens (clamped 0–1; 0 if no input)
- * - runsPerDay = 100 (volume is not in the paste; user adjusts)
+ * - tokensPerToolCall = 0 (span tokens already sit in input/output)
+ * - cacheHitRate = Σ cached_tokens / Σ input_tokens
  * - modelId = top-level model_id, else first span model_id, else default
+ * - runsPerDay is not returned; the UI keeps the current volume slider
+ *
+ * CSV: unquoted rows only. Quoted fields are rejected, not misparsed.
  */
-export function usageToConfig(paste: UsagePaste): AgentConfig {
+
+export function usageToConfig(paste: UsagePaste): ParsedUsageConfig {
   if (!paste.spans.length) {
     throw new PasteUsageError("Paste must include at least one span.");
   }
@@ -51,10 +58,26 @@ export function usageToConfig(paste: UsagePaste): AgentConfig {
     if (span.tool_name && span.tool_name.trim() !== "") {
       toolCalls += 1;
     }
+    if ((span.cached_tokens ?? 0) > span.input_tokens) {
+      throw new PasteUsageError(
+        "cached_tokens cannot exceed input_tokens on a span.",
+      );
+    }
   }
 
-  const cacheHitRate =
-    inputSum > 0 ? Math.min(1, Math.max(0, cachedSum / inputSum)) : 0;
+  if (cachedSum > inputSum) {
+    throw new PasteUsageError(
+      "cached_tokens cannot exceed input_tokens in total.",
+    );
+  }
+
+  if (inputSum > MAX_TOKEN_VALUE || outputSum > MAX_TOKEN_VALUE) {
+    throw new PasteUsageError(
+      `Token totals must be at most ${MAX_TOKEN_VALUE.toLocaleString()}.`,
+    );
+  }
+
+  const cacheHitRate = inputSum > 0 ? cachedSum / inputSum : 0;
 
   const rawModel =
     paste.model_id?.trim() ||
@@ -69,23 +92,28 @@ export function usageToConfig(paste: UsagePaste): AgentConfig {
     toolCallsPerRun: toolCalls,
     tokensPerToolCall: 0,
     cacheHitRate,
-    runsPerDay: DEFAULT_RUNS_PER_DAY,
   };
 }
 
 function resolveModelId(raw: string): string {
   if (!raw) return DEFAULT_MODEL_ID;
-  const match =
-    MODELS.find((m) => m.id === raw || m.sourceId === raw) ??
-    MODELS.filter(
-      (m) => raw.includes(m.id) || (m.sourceId != null && raw.includes(m.sourceId)),
-    ).sort((a, b) => b.id.length - a.id.length)[0];
-  return match?.id ?? DEFAULT_MODEL_ID;
+  const match = MODELS.find((m) => m.id === raw || m.sourceId === raw);
+  if (!match) {
+    throw new PasteUsageError(
+      `Unknown model_id "${raw}". Use a lineup id such as ${DEFAULT_MODEL_ID}.`,
+    );
+  }
+  return match.id;
 }
 
-function requireNonNegInt(value: unknown, field: string): number {
+function requireToken(value: unknown, field: string): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new PasteUsageError(`${field} must be a non-negative number.`);
+    throw new PasteUsageError(`${field} must be a non-negative finite number.`);
+  }
+  if (value > MAX_TOKEN_VALUE) {
+    throw new PasteUsageError(
+      `${field} must be at most ${MAX_TOKEN_VALUE.toLocaleString()}.`,
+    );
   }
   return Math.round(value);
 }
@@ -97,11 +125,11 @@ function parseSpanObject(obj: Record<string, unknown>, label: string): UsageSpan
     );
   }
   const span: UsageSpan = {
-    input_tokens: requireNonNegInt(obj.input_tokens, `${label}.input_tokens`),
-    output_tokens: requireNonNegInt(obj.output_tokens, `${label}.output_tokens`),
+    input_tokens: requireToken(obj.input_tokens, `${label}.input_tokens`),
+    output_tokens: requireToken(obj.output_tokens, `${label}.output_tokens`),
   };
   if (obj.cached_tokens !== undefined) {
-    span.cached_tokens = requireNonNegInt(
+    span.cached_tokens = requireToken(
       obj.cached_tokens,
       `${label}.cached_tokens`,
     );
@@ -123,7 +151,6 @@ function parseJsonUsage(raw: string): UsagePaste {
     throw new PasteUsageError("Invalid JSON.");
   }
 
-  // Bare span array
   if (Array.isArray(parsed)) {
     if (parsed.length === 0) {
       throw new PasteUsageError("Paste must include at least one span.");
@@ -165,6 +192,12 @@ function parseJsonUsage(raw: string): UsagePaste {
 }
 
 function parseCsvUsage(raw: string): UsagePaste {
+  if (/["']/.test(raw)) {
+    throw new PasteUsageError(
+      "Quoted CSV fields are not supported. Use unquoted CSV or JSON.",
+    );
+  }
+
   const lines = raw
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -191,25 +224,21 @@ function parseCsvUsage(raw: string): UsagePaste {
   const spans: UsageSpan[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split(",").map((c) => c.trim());
-    const input = Number(cols[inputIdx]);
-    const output = Number(cols[outputIdx]);
-    if (!Number.isFinite(input) || input < 0 || !Number.isFinite(output) || output < 0) {
-      throw new PasteUsageError(
-        `Row ${i + 1}: input_tokens and output_tokens must be non-negative numbers.`,
-      );
-    }
     const span: UsageSpan = {
-      input_tokens: Math.round(input),
-      output_tokens: Math.round(output),
+      input_tokens: requireToken(
+        Number(cols[inputIdx]),
+        `Row ${i + 1}.input_tokens`,
+      ),
+      output_tokens: requireToken(
+        Number(cols[outputIdx]),
+        `Row ${i + 1}.output_tokens`,
+      ),
     };
     if (cachedIdx >= 0 && cols[cachedIdx] !== undefined && cols[cachedIdx] !== "") {
-      const cached = Number(cols[cachedIdx]);
-      if (!Number.isFinite(cached) || cached < 0) {
-        throw new PasteUsageError(
-          `Row ${i + 1}: cached_tokens must be a non-negative number.`,
-        );
-      }
-      span.cached_tokens = Math.round(cached);
+      span.cached_tokens = requireToken(
+        Number(cols[cachedIdx]),
+        `Row ${i + 1}.cached_tokens`,
+      );
     }
     if (toolIdx >= 0 && cols[toolIdx]) {
       span.tool_name = cols[toolIdx];
@@ -223,8 +252,14 @@ function parseCsvUsage(raw: string): UsagePaste {
   return { spans };
 }
 
-/** Parse simple usage JSON or CSV into AgentConfig for the estimator sliders. */
-export function parseUsagePaste(raw: string): AgentConfig {
+/** Parse simple usage JSON or unquoted CSV into slider fields. */
+export function parseUsagePaste(raw: string): ParsedUsageConfig {
+  if (raw.length > MAX_PASTE_CHARS) {
+    throw new PasteUsageError(
+      `Paste is too large (${raw.length.toLocaleString()} chars). Max is ${MAX_PASTE_CHARS.toLocaleString()}.`,
+    );
+  }
+
   const trimmed = raw.trim();
   if (trimmed === "") {
     throw new PasteUsageError("Input is empty.");

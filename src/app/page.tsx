@@ -14,7 +14,11 @@ import {
   type Strength,
   type CostBreakdown,
 } from "@/lib/models";
-import { parseUsagePaste, PasteUsageError } from "@/lib/pasteUsage";
+import {
+  parseUsagePaste,
+  PasteUsageError,
+  type ParsedUsageConfig,
+} from "@/lib/pasteUsage";
 
 const DEFAULT_CONFIG: AgentConfig = {
   modelId: "claude-sonnet-4-6",
@@ -74,6 +78,7 @@ function Slider({
       </div>
       <input
         type="range"
+        aria-label={label}
         min={min}
         max={max}
         step={step}
@@ -218,11 +223,19 @@ function ModelTable({
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-stone-500 flex items-center gap-1.5">
+                      <div className="text-[11px] text-stone-500 flex items-center gap-1.5 flex-wrap">
                         <span
                           className={`inline-block w-1.5 h-1.5 rounded-full ${TIER_DOT[model.tier]}`}
                         />
-                        {TIER_LABEL[model.tier]} · {model.provider}
+                        {TIER_LABEL[model.tier]} · {model.modelDeveloper}
+                        {model.pricingProvider !== model.modelDeveloper && (
+                          <span> · priced via {model.pricingProvider}</span>
+                        )}
+                        {model.pricingStatus === "carried-forward" && (
+                          <span className="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-amber-50 text-amber-800">
+                            carried-forward
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -277,7 +290,11 @@ function toggleSet<T>(set: Set<T>, value: T): Set<T> {
   return next;
 }
 
-function PasteUsagePanel({ onApply }: { onApply: (cfg: AgentConfig) => void }) {
+function PasteUsagePanel({
+  onApply,
+}: {
+  onApply: (cfg: ParsedUsageConfig) => void;
+}) {
   const [raw, setRaw] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
@@ -312,6 +329,7 @@ function PasteUsagePanel({ onApply }: { onApply: (cfg: AgentConfig) => void }) {
 
       <div className="mt-4 space-y-3">
         <textarea
+          aria-label="Usage paste"
           value={raw}
           onChange={(e) => {
             setRaw(e.target.value);
@@ -344,13 +362,19 @@ function PasteUsagePanel({ onApply }: { onApply: (cfg: AgentConfig) => void }) {
           {applied && (
             <span className="text-xs text-emerald-700">Sliders updated.</span>
           )}
-          {error && <span className="text-xs text-red-600">{error}</span>}
+          {error && (
+            <span role="alert" className="text-xs text-red-600">
+              {error}
+            </span>
+          )}
         </div>
         <p className="text-[11px] text-stone-400 leading-relaxed">
-          CSV header:{" "}
+          Unquoted CSV only (quoted fields are rejected). Header:{" "}
           <code className="text-stone-500">
             input_tokens,output_tokens,cached_tokens,tool_name,model_id
           </code>
+          . System prompt is set to 0 (not in the format). Runs/day is left
+          unchanged.
         </p>
       </div>
     </details>
@@ -430,7 +454,7 @@ export default function Home() {
     0,
   );
 
-  const PAGE_SIZE = 15;
+  const PAGE_SIZE = 20;
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
@@ -472,7 +496,9 @@ export default function Home() {
           </p>
         </div>
 
-        <PasteUsagePanel onApply={setConfig} />
+        <PasteUsagePanel
+          onApply={(partial) => setConfig((c) => ({ ...c, ...partial }))}
+        />
 
         <section className="bg-white border border-stone-200 rounded-xl p-5">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-stone-500 mb-4">

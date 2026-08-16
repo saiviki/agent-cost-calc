@@ -6,14 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint .",
+    "lint": "echo 'No ESLint config (Next 16 no longer ships next lint). Type-check with tsc.'",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sync-models": "tsx scripts/sync-models.ts",
+    "test:e2e": "playwright test",
+    "sync-models": "tsx scripts/sync-models.ts --refresh",
+    "sync-models:refresh": "tsx scripts/sync-models.ts --refresh",
     "sync-models:check": "tsx scripts/sync-models.ts --check"
   },
   "dependencies": {
-    "next": "^16.2.6",
+    "next": "^16.3.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -21,8 +23,9 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@playwright/test": "^1.55.0",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.5.10",
+    "postcss": "^8.5.26",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.22.4",
     "typescript": "^5",
@@ -30,6 +33,7 @@
   },
   "overrides": {
     "esbuild": "^0.25.5",
-    "postcss": "^8.5.10"
+    "nanoid": "^3.3.18",
+    "postcss": "^8.5.26"
   }
 }
