@@ -2,7 +2,7 @@
 
 Model the real cost of running an AI agent before you scale.
 
-Configure your agent's token profile, tool calls, caching strategy, and volume — get an instant cost breakdown across the top models.
+Configure your agent's token profile, tool calls, caching strategy, and volume — get an instant cost breakdown across a curated model lineup. Optionally paste simple usage JSON/CSV to fill the sliders from a real run.
 
 **Live:** [agent-cost-calc-saiviki.vercel.app](https://agent-cost-calc-saiviki.vercel.app)
 
@@ -14,14 +14,21 @@ Configure your agent's token profile, tool calls, caching strategy, and volume �
 - Configure tool calls: how many per run, avg tokens each
 - Tune cache hit rate: see the real impact of prompt caching
 - Set volume: runs/day → daily + monthly cost estimate
+- **Paste usage** (optional): simple JSON or unquoted CSV of spans → fills the same sliders
 
 Side-by-side comparison sorts by cost (cheapest first) and updates as you adjust filters and inputs.
 
-The lineup is curated from **OpenRouter's real-usage rankings** (production traffic across thousands of agent apps), not just "newest models." Many of the headline-newest models — including GPT-5/5.5 — have lower production adoption than Claude Sonnet 4.6 or DeepSeek V4. The picker reflects that.
+models.dev supplies **pricing and metadata for these editorial entries only**. The app does not auto-expose the full models.dev catalog.
+
+## Trace Analyzer (retired)
+
+The Trace Analyzer (`/trace`) and its classifier / recommendation / retokenization / replay / billed-cost stack were removed in this simplification.
+
+The last commit that still contains that implementation is [`c48c6ad`](https://github.com/saiviki/agent-cost-calc/commit/c48c6ad64bda04d92db2c9915088e46e2efe0c2d) (`docs: document billed-accuracy gate status and real-trace sources`). Recover it from git history; it is not archived in this tree. `/trace` now explains the retirement.
 
 ## Stack
 
-- Next.js 15 + React 19
+- Next.js + React 19
 - Tailwind CSS
 - Zero backend — all calculation runs client-side
 
@@ -34,49 +41,45 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Pricing sync
+
+Pricing comes from [models.dev/catalog.json](https://models.dev/catalog.json) for the editorial lineup in `scripts/model-catalog.ts`. Each row records `modelDeveloper`, `pricingProvider`, `sourceId`, and `pricingStatus` (`live` | `carried-forward`). See [docs/DATA-PIPELINE.md](docs/DATA-PIPELINE.md).
+
+```bash
+npm run sync-models:refresh  # fetch models.dev and rewrite the curated snapshot
+npm run sync-models:check    # offline validation of the committed snapshot
+```
+
+`sync-models:check` is deterministic and does not use the network. Refresh is an explicit operator step: review the diff, then commit. Suggested cadence is weekly.
+
+Carried-forward entries stay in the table with a **carried-forward** badge:
+
+- `grok-4.1-fast` maps to `xai/grok-4.1-fast` but no provider currently lists a price. It is **not** remapped to Grok 4.3/4.5/4.6.
+- `llama-3.3-70b` maps to `meta/llama-3.3-70b-instruct`. Meta has no list price; host quotes diverge, so no fallback provider is configured.
+
+## Paste usage format
+
+JSON:
+
+```json
+{
+  "model_id": "claude-sonnet-4-6",
+  "spans": [
+    { "input_tokens": 4200, "output_tokens": 890, "cached_tokens": 1800, "tool_name": "retriever" }
+  ]
+}
+```
+
+CSV header: `input_tokens,output_tokens,cached_tokens,tool_name,model_id`
+
+**Quoted CSV fields are not supported.** Use unquoted CSV or JSON. The parser rejects quotes rather than mis-splitting fields.
+
+Span tokens are summed into the per-run inputs. Cache hit rate = Σ cached / Σ input. `cached_tokens` may not exceed `input_tokens`. Tool-named spans set the tool-call count (their tokens stay in the input/output totals to avoid double-counting).
+
+Omitted `model_id` defaults to `claude-sonnet-4-6`. An unknown `model_id` is an error, not a silent fallback. System prompt is set to 0 (not in the format). **Runs/day is left unchanged.**
+
+Maximum paste size: 64 KiB. Token fields must be finite, non-negative, and at most 10,000,000.
+
 ## Deploy
 
 One-click to Vercel: [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/saiviki/agent-cost-calc)
-
-## Lineup
-
-Verified 2026-05-09 against [OpenRouter's unified pricing API](https://openrouter.ai/api/v1/models) (ground-truth across 100+ providers) + Anthropic / Google official docs.
-
-### Frontier
-
-| Model | Provider | Input /1M | Output /1M | Cache read /1M | Open? |
-|---|---|---|---|---|---|
-| Claude Opus 4.7 | Anthropic | $5.00 | $25.00 | $0.50 | — |
-| Claude Sonnet 4.6 | Anthropic | $3.00 | $15.00 | $0.30 | — |
-| GPT-5.5 | OpenAI | $5.00 | $30.00 | $0.50 | — |
-| Gemini 3.1 Pro | Google | $2.00 | $12.00 | $0.20 | — |
-| DeepSeek V4 Pro | DeepSeek | $0.435 | $0.870 | $0.0036 | ✓ |
-| Kimi K2.6 | Moonshot | $0.75 | $3.50 | $0.15 | ✓ |
-
-### Mid
-
-| Model | Provider | Input /1M | Output /1M | Cache read /1M | Open? |
-|---|---|---|---|---|---|
-| Claude Haiku 4.5 | Anthropic | $1.00 | $5.00 | $0.10 | — |
-| GPT-5.4 mini | OpenAI | $0.75 | $4.50 | $0.075 | — |
-| Gemini 3 Flash | Google | $0.50 | $3.00 | $0.05 | — |
-| Grok 4.1 Fast | xAI | $0.20 | $0.50 | $0.05 | — |
-| Qwen 3.6 Plus | Alibaba | $0.325 | $1.95 | — | ✓ |
-
-### Budget
-
-| Model | Provider | Input /1M | Output /1M | Cache read /1M | Open? |
-|---|---|---|---|---|---|
-| GLM 5.1 | Z.ai | $0.14 | $0.14 | — | ✓ |
-| DeepSeek V4 Flash | DeepSeek | $0.14 | $0.28 | $0.0028 | ✓ |
-| Llama 3.3 70B | Meta | $0.10 | $0.32 | — | ✓ |
-| MiniMax M2.7 | MiniMax | $0.30 | $1.20 | — | ✓ |
-| Mistral Large 2 | Mistral | $0.50 | $1.50 | $0.05 | ✓ |
-
-### Notes
-
-- **Anthropic prompt caching**: standard `read = 0.10 × input, write_5min = 1.25 × input`.
-- **OpenAI cached input**: GPT-5.x family ≈ 0.10 × input.
-- **Open-model cache pricing** varies by host (Together, Fireworks, Groq, DeepInfra, etc.); figures here are OpenRouter median rates. Self-hosted = no per-token cost but you pay for compute.
-- **Gemini 3.1 Pro pricing** shown is the standard tier; >200k-token requests follow Google's tiered pricing.
-- **Lineup curation** prioritizes real-world production usage (OpenRouter top-20) over headline-newest. GPT-5/5.5 is included for completeness but is not currently a top-10 production model by token volume.

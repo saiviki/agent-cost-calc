@@ -1,0 +1,64 @@
+# Optional live drift report against models.dev.
+# Manual or weekly. Does not gate regular PR CI.
+
+name: Refresh pricing snapshot
+
+on:
+  schedule:
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: pricing-refresh
+  cancel-in-progress: true
+
+jobs:
+  report-drift:
+    name: report models.dev drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Offline validation
+        run: npm run sync-models:check
+
+      - name: Refresh and compare prices (ignore fetch timestamps)
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const strip = (p) => {
+              const j = JSON.parse(readFileSync(p, "utf8"));
+              delete j.fetchedAt;
+              for (const m of j.models ?? []) delete m.pricingFetchedAt;
+              return JSON.stringify(j, null, 2) + "\n";
+            };
+            writeFileSync("/tmp/pricing.before.json", strip("src/lib/pricing.generated.json"));
+          '
+          npm run sync-models:refresh
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const strip = (p) => {
+              const j = JSON.parse(readFileSync(p, "utf8"));
+              delete j.fetchedAt;
+              for (const m of j.models ?? []) delete m.pricingFetchedAt;
+              return JSON.stringify(j, null, 2) + "\n";
+            };
+            writeFileSync("/tmp/pricing.after.json", strip("src/lib/pricing.generated.json"));
+          '
+          if diff -u /tmp/pricing.before.json /tmp/pricing.after.json; then
+            echo "No live price/provenance drift versus committed snapshot."
+          else
+            echo "Drift detected. An operator should review and commit a refresh."
+            git restore --source=HEAD -- src/lib/pricing.generated.json
+            exit 1
+          fi

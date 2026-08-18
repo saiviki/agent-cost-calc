@@ -32,3 +32,9 @@ next-env.d.ts
 
 # pi coding agent session data
 .pi/
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
