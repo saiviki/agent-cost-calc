@@ -32,6 +32,9 @@ arithmetic and cache-tier logic are internally consistent, **not** that the
 engine matches a real invoice. The Phase 1 gate is therefore tautological until
 `billedCostPerRun` is replaced with the operator's real per-run dashboard $.
 
+The validator now prints `CIRCULAR_PLACEHOLDER` for these rows so the 0.00%
+result cannot be mistaken for real invoice validation.
+
 **This is intentional and documented** (`RUNBOOK-billed-accuracy.md` §1, §4).
 The repo ships the drop-in mechanism; the operator owns the empirical claim.
 
@@ -62,3 +65,11 @@ See `docs/SOURCES-traces.md`.
   Phase 2b all PASS at 0.00%). `npm test` 105 passed / 2 todo. Working tree
   clean, HEAD at `origin/main`. No empirical claim advanced — circularity
   documented here.
+
+- 2026-07-03 Layer 1 verify-or-kill: `npx tsx scripts/validate-real-sessions.ts`
+  priced 3 real Claude Code traces from `~/.claude/projects` and 3 Codex traces
+  from `~/.codex/sessions`, but invoice reconciliation is parked:
+  `summary rows=6 invoice_tested=0 blocked=6 failed=0`. Evidence:
+  `docs/test-artifacts/real-session-validation.txt`. Do not commit/push/deploy
+  until real Anthropic/OpenAI invoice totals are added via
+  `fixtures/real-session-invoices.json` and all 6 rows pass within ±5%.

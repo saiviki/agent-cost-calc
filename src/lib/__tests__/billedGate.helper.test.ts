@@ -75,6 +75,8 @@ describe("billedGate.helper — gate mechanics on synthetic fixtures", () => {
   it("real-claude-code-session.jsonl: Phase 1 within ±5% (Anthropic, cache + tools)", () => {
     const g = runBilledGate("real-claude-code-session.jsonl");
     expect(g.hasRealInvoice).toBe(true);
+    expect(g.isCircularInvoicePlaceholder).toBe(true);
+    expect(g.warnings.join("\n")).toContain("CIRCULAR_PLACEHOLDER");
     expect(g.provider).toBe("anthropic");
     expect(g.sourceModelId).toBe("claude-sonnet-4-6");
     expect(g.runs).toBe(2);
@@ -84,6 +86,8 @@ describe("billedGate.helper — gate mechanics on synthetic fixtures", () => {
   it("real-openai-run.json: Phase 1 within ±5% (OpenAI reasoning model + cached input)", () => {
     const g = runBilledGate("real-openai-run.json");
     expect(g.hasRealInvoice).toBe(true);
+    expect(g.isCircularInvoicePlaceholder).toBe(true);
+    expect(g.warnings.join("\n")).toContain("CIRCULAR_PLACEHOLDER");
     expect(g.provider).toBe("openai");
     expect(g.sourceModelId).toBe("gpt-5.5");
     expect(g.runs).toBe(3);
@@ -93,6 +97,8 @@ describe("billedGate.helper — gate mechanics on synthetic fixtures", () => {
   it("real-gemini-run.json: Phase 1 within ±5% (Gemini implicit cache + thoughts)", () => {
     const g = runBilledGate("real-gemini-run.json");
     expect(g.hasRealInvoice).toBe(true);
+    expect(g.isCircularInvoicePlaceholder).toBe(true);
+    expect(g.warnings.join("\n")).toContain("CIRCULAR_PLACEHOLDER");
     expect(g.provider).toBe("gemini");
     expect(g.sourceModelId).toBe("gemini-3.1-pro");
     expect(g.runs).toBe(2);

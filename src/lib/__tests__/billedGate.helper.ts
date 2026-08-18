@@ -29,6 +29,7 @@ export type BilledGateResult = {
   passesTarget: boolean; // errorPct !== null && errorPct <= 0.02
   passesHard: boolean; // errorPct !== null && errorPct <= 0.05
   hasRealInvoice: boolean; // billedCost !== null
+  isCircularInvoicePlaceholder: boolean; // billedCost matches expectedReconstructedCost instead of real dashboard $
   warnings: string[];
 };
 
@@ -106,6 +107,19 @@ export function runBilledGate(fixtureFileName: string): BilledGateResult {
     billedTotal !== null && Number.isFinite(computedCost) && billedTotal > 0
       ? Math.abs(computedCost - billedTotal) / billedTotal
       : null;
+  const expectedReconstructedCost =
+    typeof entry.expectedReconstructedCost === "number"
+      ? entry.expectedReconstructedCost
+      : null;
+  const isCircularInvoicePlaceholder =
+    billedTotal !== null &&
+    expectedReconstructedCost !== null &&
+    Math.abs(billedTotal - expectedReconstructedCost) <= 1e-9;
+  if (isCircularInvoicePlaceholder) {
+    warnings.push(
+      "CIRCULAR_PLACEHOLDER: billedCostPerRun matches expectedReconstructedCost / runs; replace it with real dashboard $ before claiming billed accuracy",
+    );
+  }
 
   return {
     fixtureName: fixtureFileName,
@@ -120,6 +134,7 @@ export function runBilledGate(fixtureFileName: string): BilledGateResult {
     passesTarget: errorPct !== null && errorPct <= 0.02,
     passesHard: errorPct !== null && errorPct <= 0.05,
     hasRealInvoice: billedTotal !== null,
+    isCircularInvoicePlaceholder,
     warnings,
   };
 }

@@ -78,6 +78,7 @@ type TraceRow = {
   phase1Billed: number;
   phase1ErrorPct: number;
   phase1Passes: boolean;
+  phase1CircularPlaceholder: boolean;
   cfAnchorCost: number; // cross-model counterfactual cost using the SOURCE (anchor) model
   cfAnchorErrorPct: number; // |cfAnchor - phase1Computed| / phase1Computed (the cross-model counterfactual self-consistency check)
   cfNotes: string[];
@@ -121,6 +122,10 @@ function runFixture(fixture: string, entry: ExpectedEntry): TraceRow {
       ? Math.abs(phase1Computed - phase1Billed) / phase1Billed
       : NaN;
   const phase1Passes = Number.isFinite(phase1ErrorPct) && phase1ErrorPct <= HARD_GATE_PCT;
+  const phase1CircularPlaceholder =
+    typeof entry.expectedReconstructedCost === "number" &&
+    Number.isFinite(phase1Billed) &&
+    Math.abs(phase1Billed - entry.expectedReconstructedCost) <= 1e-9;
 
   // ── Phase 2: cross-model counterfactual (real tokenizer + verbosity mult) ──
   // The anchor row = the source model. cfAnchorCost must reproduce phase1Computed
@@ -174,6 +179,7 @@ function runFixture(fixture: string, entry: ExpectedEntry): TraceRow {
     phase1Billed,
     phase1ErrorPct,
     phase1Passes,
+    phase1CircularPlaceholder,
     cfAnchorCost,
     cfAnchorErrorPct,
     cfNotes: [],
@@ -317,6 +323,7 @@ function printTable(rows: TraceRow[]): void {
     "billed",
     "|err|",
     "gate",
+    "invoice",
   ];
   console.log(phase1Header.join(" | "));
   console.log("-".repeat(110));
@@ -331,7 +338,17 @@ function printTable(rows: TraceRow[]): void {
         Number.isFinite(r.phase1Billed) ? fmt$(r.phase1Billed) : "n/a",
         fmtPct(r.phase1ErrorPct),
         r.phase1Passes ? "PASS" : "FAIL",
+        r.phase1CircularPlaceholder ? "CIRCULAR_PLACEHOLDER" : "operator_real_$",
       ].join(" | "),
+    );
+  }
+  const circularRows = rows.filter((r) => r.phase1CircularPlaceholder);
+  if (circularRows.length > 0) {
+    console.log(
+      "\nWARNING: CIRCULAR_PLACEHOLDER rows compare reconstruction against expectedReconstructedCost, not a real provider dashboard/invoice value.",
+    );
+    console.log(
+      "Replace billedCostPerRun with operator-supplied real per-run $ before claiming empirical ±5% billed accuracy.",
     );
   }
 
@@ -442,7 +459,7 @@ function main(): void {
   const gateFixtures = realFixtures.length >= MIN_TRACES ? realFixtures : fixtures;
 
   console.log(
-    `Ship gate: ±${(HARD_GATE_PCT * 100).toFixed(0)}% (target ±${(TARGET_PCT * 100).toFixed(0)}%) across >= ${MIN_TRACES} traces.`,
+    `Mechanism gate: ±${(HARD_GATE_PCT * 100).toFixed(0)}% (target ±${(TARGET_PCT * 100).toFixed(0)}%) across >= ${MIN_TRACES} traces.`,
   );
   console.log(`Traces under test: ${gateFixtures.join(", ")}`);
 
@@ -471,7 +488,7 @@ function main(): void {
     );
   const enoughTraces = rows.length >= MIN_TRACES;
 
-  console.log("\n=== Ship gate decision ===");
+  console.log("\n=== Mechanism gate decision ===");
   console.log(`traces evaluated : ${rows.length} (need >= ${MIN_TRACES}) — ${enoughTraces ? "OK" : "INSUFFICIENT"}`);
   console.log(
     `Phase 1 (<= 5%)   : ${rows.filter((r) => r.phase1Passes).length}/${rows.length} pass — ${phase1AllPass ? "OK" : "FAIL"}`,
@@ -480,12 +497,16 @@ function main(): void {
     `Phase 2 cf (<= 5%): ${rows.filter((r) => Number.isFinite(r.cfAnchorErrorPct) && r.cfAnchorErrorPct <= HARD_GATE_PCT).length}/${rows.length} pass — ${cfAllPass ? "OK" : "FAIL"}`,
   );
   console.log(
-    `Phase 2b x-model : ${cfTargetRows.filter((r) => Number.isFinite(r.cfTargetErrorPct) && r.cfTargetErrorPct <= HARD_GATE_PCT).length}/${cfTargetRows.length} pass — ${cfTargetAllPass ? "OK" : "FAIL"} (the cross-model ±5% gate)`,
+    `Phase 2b x-model : ${cfTargetRows.filter((r) => Number.isFinite(r.cfTargetErrorPct) && r.cfTargetErrorPct <= HARD_GATE_PCT).length}/${cfTargetRows.length} pass — ${cfTargetAllPass ? "OK" : "FAIL"} (cross-model mechanism gate)`,
+  );
+  const hasCircularPlaceholders = rows.some((r) => r.phase1CircularPlaceholder);
+  console.log(
+    `Empirical invoice validation: ${hasCircularPlaceholders ? "NOT CLAIMED — CIRCULAR_PLACEHOLDER rows need real dashboard $" : "OK — operator_real_$ rows only"}`,
   );
 
   const pass = enoughTraces && phase1AllPass && cfAllPass && cfTargetAllPass;
   console.log(
-    `\nSHIP GATE: ${pass ? "PASS" : "FAIL"} ${pass ? "(counterfactual within ±5% of actual across >= 3 traces)" : "(see failures above)"}`,
+    `\nMECHANISM GATE: ${pass ? "PASS" : "FAIL"} ${pass ? "(counterfactual mechanics within ±5% across >= 3 traces)" : "(see failures above)"}`,
   );
   if (!pass) {
     process.exit(1);
