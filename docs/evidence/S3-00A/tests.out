@@ -1,0 +1,15 @@
+
+ RUN  v3.2.6 /Users/saiviki/Documents/Projects/agent-cost-calc
+
+ ✓ scripts/__tests__/models-dev-mappers.test.ts (15 tests) 4ms
+ ✓ scripts/__tests__/validate-pricing-snapshot.test.ts (6 tests) 2ms
+ ✓ src/lib/__tests__/models.test.ts (4 tests) 4ms
+ ✓ src/lib/__tests__/pasteUsage.test.ts (17 tests) 14ms
+ ✓ src/telemetry/__tests__/auth.test.ts (6 tests) 7ms
+ ✓ src/telemetry/__tests__/store.test.ts (8 tests) 23ms
+
+ Test Files  6 passed (6)
+      Tests  56 passed (56)
+   Start at  18:29:39
+   Duration  542ms (transform 197ms, setup 0ms, collect 411ms, tests 55ms, environment 1ms, prepare 352ms)
+

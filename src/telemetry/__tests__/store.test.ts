@@ -121,10 +121,18 @@ describe("KV env configuration", () => {
 describe("telemetry API routes", () => {
   const saved: Partial<Record<string, string | undefined>> = {};
 
+  const TEST_SECRET = "route-suite-secret";
+  const AUTH = { "x-telemetry-secret": TEST_SECRET };
+  let savedSecret: string | undefined;
+
   beforeEach(() => {
     for (const name of KV_ENV_VARS) {
       saved[name] = process.env[name];
     }
+    // These tests exercise STORE misconfiguration, not auth. Authenticate so the
+    // request reaches the store check; the guard itself is covered in auth.test.ts.
+    savedSecret = process.env.TELEMETRY_SECRET;
+    process.env.TELEMETRY_SECRET = TEST_SECRET;
   });
 
   afterEach(() => {
@@ -135,6 +143,8 @@ describe("telemetry API routes", () => {
         process.env[name] = saved[name];
       }
     }
+    if (savedSecret === undefined) delete process.env.TELEMETRY_SECRET;
+    else process.env.TELEMETRY_SECRET = savedSecret;
     vi.restoreAllMocks();
   });
 
@@ -143,7 +153,9 @@ describe("telemetry API routes", () => {
     delete process.env.KV_REST_API_TOKEN;
 
     const response = await getCounter(
-      new NextRequest("http://localhost/api/telemetry/get?bucket=runs&key=total"),
+      new NextRequest("http://localhost/api/telemetry/get?bucket=runs&key=total", {
+        headers: AUTH,
+      }),
     );
     const body = await response.json();
 
@@ -160,7 +172,7 @@ describe("telemetry API routes", () => {
     const response = await incrementCounter(
       new NextRequest("http://localhost/api/telemetry/increment", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...AUTH },
         body: JSON.stringify({ bucket: "runs", key: "total" }),
       }),
     );

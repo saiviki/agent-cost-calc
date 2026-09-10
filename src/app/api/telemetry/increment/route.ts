@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withTelemetryStore } from "@/telemetry/api";
+import { requireTelemetrySecret } from "@/telemetry/auth";
 
 export async function POST(request: NextRequest) {
+  const denied = requireTelemetrySecret(request);
+  if (denied) return denied;
+
   let body: { bucket?: string; key?: string };
   try {
     body = await request.json();

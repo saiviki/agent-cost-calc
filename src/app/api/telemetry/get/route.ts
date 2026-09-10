@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withTelemetryStore } from "@/telemetry/api";
+import { requireTelemetrySecret } from "@/telemetry/auth";
 
 export async function GET(request: NextRequest) {
+  const denied = requireTelemetrySecret(request);
+  if (denied) return denied;
+
   const bucket = request.nextUrl.searchParams.get("bucket");
   const key = request.nextUrl.searchParams.get("key");
 
