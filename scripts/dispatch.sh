@@ -114,7 +114,13 @@ if [ "$mode" = build ]; then sed -i.bak -E '0,/^status:.*/s//status: in-progress
 # stdin closed: a headless CLI must never wait on a terminal. Wall-clock cap: DISPATCH_TIMEOUT (harness.env, default 30 min).
 # Note: opencode buffers its output until exit, so the log stays empty while it works; that is normal, not a stall.
 set +e
-timeout "${DISPATCH_TIMEOUT:-1800}" "${cmd[@]}" </dev/null 2>&1 | tee "$log"
+TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"   # macOS has neither until coreutils
+if [ -n "$TIMEOUT_BIN" ]; then
+  "$TIMEOUT_BIN" "${DISPATCH_TIMEOUT:-1800}" "${cmd[@]}" </dev/null 2>&1 | tee "$log"
+else
+  echo "WARN: no timeout/gtimeout on PATH; running without a wall-clock cap (brew install coreutils)" | tee "$log"
+  "${cmd[@]}" </dev/null 2>&1 | tee -a "$log"
+fi
 rc=${PIPESTATUS[0]}
 set -e
 echo "cli exit code: $rc" | tee -a "$log"

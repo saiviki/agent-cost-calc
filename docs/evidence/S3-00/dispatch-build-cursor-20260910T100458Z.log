@@ -1,0 +1,2 @@
+scripts/dispatch.sh: line 117: timeout: command not found
+cli exit code: 127
