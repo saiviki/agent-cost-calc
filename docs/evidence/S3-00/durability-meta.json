@@ -1,0 +1,14 @@
+{
+  "deployment_id_initial": "dpl_AgTZ5QCiqN6raFavYFLoa6YCDkKT",
+  "deployment_id_after_force": "dpl_EuRKnvgVtabRYbzAvfsnzc2UgNTq",
+  "deployment_url_after_force": "https://agent-cost-calc-aq05ganq8-sairamprojects.vercel.app",
+  "bucket": "s3-00-durability",
+  "key": "cold-start-20260910T103200Z",
+  "production_url": "https://agent-cost-calc.vercel.app",
+  "method": "POST increment once, vercel deploy --prod --force, GET from fresh invocation",
+  "increment_ts": "2026-09-10T10:32:01.672Z",
+  "get_ts": "2026-09-10T10:32:44.739Z",
+  "increment_value": 1,
+  "get_value": 1,
+  "durability_proven": true
+}

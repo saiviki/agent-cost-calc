@@ -83,3 +83,25 @@ Maximum paste size: 64 KiB. Token fields must be finite, non-negative, and at mo
 ## Deploy
 
 One-click to Vercel: [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/saiviki/agent-cost-calc)
+
+### Telemetry store (durable counters / event log)
+
+The estimator UI stays client-side, but telemetry for future ops features uses a **durable Redis store** provisioned through the Vercel Marketplace (**Upstash for Redis**, `agent-cost-calc-telemetry`).
+
+Required environment variables (injected automatically when the Upstash integration is connected):
+
+| Variable | Purpose |
+|---|---|
+| `KV_REST_API_URL` | Upstash REST endpoint |
+| `KV_REST_API_TOKEN` | Upstash REST write token |
+
+`src/telemetry/store.ts` exposes `increment`, `get`, `append`, and `list`. HTTP probes live at `/api/telemetry/increment` (POST) and `/api/telemetry/get` (GET).
+
+**If either variable is unset**, those endpoints return **HTTP 500** with a JSON body naming the missing variable(s). They do **not** return 200 with a zero count or silently no-op.
+
+Provision locally:
+
+```bash
+vercel integration add upstash/upstash-kv -n agent-cost-calc-telemetry -m primaryRegion=iad1 -p free
+vercel env pull .env.local
+```
