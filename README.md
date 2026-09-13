@@ -83,3 +83,45 @@ Maximum paste size: 64 KiB. Token fields must be finite, non-negative, and at mo
 ## Deploy
 
 One-click to Vercel: [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/saiviki/agent-cost-calc)
+
+### Telemetry store (durable counters / event log)
+
+The estimator UI stays client-side, but telemetry for future ops features uses a **durable Redis store** provisioned through the Vercel Marketplace (**Upstash for Redis**, `agent-cost-calc-telemetry`).
+
+Required environment variables (injected automatically when the Upstash integration is connected):
+
+| Variable | Purpose |
+|---|---|
+| `KV_REST_API_URL` | Upstash REST endpoint |
+| `KV_REST_API_TOKEN` | Upstash REST write token |
+| `TELEMETRY_SECRET` | Shared secret both probe endpoints require. **Set this yourself**; the Upstash integration does not inject it. |
+
+`src/telemetry/store.ts` exposes `increment`, `get`, `append`, and `list`. HTTP probes live at `/api/telemetry/increment` (POST) and `/api/telemetry/get` (GET).
+
+### Both probe endpoints require authentication
+
+Send the secret on every call, or you get 401:
+
+```bash
+curl -X POST https://<host>/api/telemetry/increment \
+  -H "x-telemetry-secret: $TELEMETRY_SECRET" \
+  -H 'content-type: application/json' \
+  -d '{"bucket":"runs","key":"total"}'
+```
+
+Set it once per environment:
+
+```bash
+vercel env add TELEMETRY_SECRET production --value "$(openssl rand -hex 32)" --sensitive -y
+```
+
+**If `TELEMETRY_SECRET` is unset the endpoints return HTTP 503**, not 200. The guard fails closed on purpose: these counters feed the day-90 scale-or-kill call, and a counter anyone can write is worse than no counter. A missing secret must look like an outage, not like an open endpoint.
+
+**If either variable is unset**, those endpoints return **HTTP 500** with a JSON body naming the missing variable(s). They do **not** return 200 with a zero count or silently no-op.
+
+Provision locally:
+
+```bash
+vercel integration add upstash/upstash-kv -n agent-cost-calc-telemetry -m primaryRegion=iad1 -p free
+vercel env pull .env.local
+```

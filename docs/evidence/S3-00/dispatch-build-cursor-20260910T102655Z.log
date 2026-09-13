@@ -1,0 +1,42 @@
+S3-00 is complete on branch `s3-00-telemetry-store`.
+
+## Acceptance criteria
+
+| # | Status | Notes |
+|---|--------|-------|
+| 1 Cold-start durability | **PASS** | Increment → force redeploy → get returned `value: 1` |
+| 2 Missing env → 5xx | **PASS** | API returns 500 naming `KV_REST_API_URL` / `KV_REST_API_TOKEN` |
+| 3 Shared test suite | **PASS** | One file, `memory` + `redis` backends (12 telemetry tests) |
+
+## What was built
+
+**Store:** Upstash for Redis via Vercel Marketplace (`agent-cost-calc-telemetry`, region `iad1`). No prior store existed in the repo; Vercel KV is sunset, so Upstash is the supported replacement with the same `KV_*` env vars.
+
+**Module:** `src/telemetry/store.ts` — `increment`, `get`, `append`, `list` plus in-memory and Redis implementations.
+
+**Endpoints:** `POST /api/telemetry/increment`, `GET /api/telemetry/get` — fail loudly when env vars are unset.
+
+**Deploy config:** Next.js 16.3.1 on Vercel (`sairamprojects/agent-cost-calc`), build region `iad1`, production at https://agent-cost-calc.vercel.app.
+
+## Evidence
+
+- Test gate: `sha256=555cb015e82131bbe3d9c7b55c9d72b56db58af4031eeb7edd0e0d19ce9b80f1` (`check-evidence.sh S3-00` → PASS)
+- Durability: `docs/evidence/S3-00/durability-increment.json`, `durability-get.json`, `durability-meta.json`
+- Report: `docs/stories/S3-00.report.md`
+- Commit: `148ea1f` on `s3-00-telemetry-store`
+
+## Owner gates completed
+
+- Upstash Redis provisioned and connected to the Vercel project
+- `KV_REST_API_URL` and `KV_REST_API_TOKEN` set in Production + Preview
+
+**Next step:** critic review (`glm-review`) per the story protocol — builder does not self-certify.S3-00 is done on branch `s3-00-telemetry-store` (commit `148ea1f`).
+
+A durable telemetry store is in place using **Upstash Redis** via the Vercel Marketplace, with `increment` / `get` / `append` / `list` in `src/telemetry/store.ts`, HTTP probes at `/api/telemetry/increment` and `/api/telemetry/get`, and loud 5xx responses when `KV_REST_API_URL` or `KV_REST_API_TOKEN` are missing.
+
+All three acceptance criteria passed: cold-start durability was proven on production (increment → force redeploy → get still returned `1`), missing-env behavior is tested, and memory + Redis share one test suite (54 tests, evidence gate PASS).
+
+Report: `docs/stories/S3-00.report.md`. Ready for critic review (`glm-review`).
+cli exit code: 0
+--- evidence gate ---
+PASS S3-00: sha256 555cb015e82131bbe3d9c7b55c9d72b56db58af4031eeb7edd0e0d19ce9b80f1 verified, exit 0, red-run evidence absent,    Duration  5.10s (transform 144ms, setup 0ms, collect 311ms, tests 4.61s, environment 0ms, prepare 325ms)

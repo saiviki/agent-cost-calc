@@ -1,0 +1,8 @@
+{
+  "command": "npx vitest run",
+  "exit_code": 0,
+  "sha256": "555cb015e82131bbe3d9c7b55c9d72b56db58af4031eeb7edd0e0d19ce9b80f1",
+  "summary": "   Duration  5.10s (transform 144ms, setup 0ms, collect 311ms, tests 4.61s, environment 0ms, prepare 325ms)",
+  "captured_output_file": "docs/evidence/S3-00/tests.out",
+  "timestamp": "2026-09-10T10:31:28Z"
+}

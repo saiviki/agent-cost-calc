@@ -1,0 +1,18 @@
+
+ RUN  v3.2.6 /Users/saiviki/Documents/Projects/agent-cost-calc
+
+ ✓ scripts/__tests__/validate-pricing-snapshot.test.ts (6 tests) 2ms
+ ✓ scripts/__tests__/models-dev-mappers.test.ts (15 tests) 3ms
+ ✓ src/lib/__tests__/models.test.ts (4 tests) 4ms
+ ✓ src/lib/__tests__/pasteUsage.test.ts (17 tests) 16ms
+ ✓ src/telemetry/__tests__/store.test.ts (12 tests) 4583ms
+   ✓ TelemetryStore (redis) > increment returns increasing values and get reads them back  1263ms
+   ✓ TelemetryStore (redis) > isolates counters by bucket and key  1786ms
+   ✓ TelemetryStore (redis) > append and list return records since a timestamp  747ms
+   ✓ TelemetryStore (redis) > list filters out records before sinceTs  766ms
+
+ Test Files  5 passed (5)
+      Tests  54 passed (54)
+   Start at  16:01:22
+   Duration  5.10s (transform 144ms, setup 0ms, collect 311ms, tests 4.61s, environment 0ms, prepare 325ms)
+

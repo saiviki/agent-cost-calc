@@ -1,0 +1,34 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "zai-coding-plan/glm-5.3-flash",
+  "small_model": "zai-coding-plan/glm-5.3-flash",
+  "instructions": ["AGENTS.md", ".agents/rules/testing-evidence.md", ".agents/rules/model-routing.md"],
+  "permission": {
+    "edit": "allow",
+    "bash": "allow",
+    "webfetch": "ask"
+  },
+  "agent": {
+    "build": {
+      "description": "Builder: implements one story end to end, produces hashed test evidence, writes the report. Cheap model.",
+      "mode": "primary",
+      "model": "zai-coding-plan/glm-5.3-flash",
+      "prompt": "{file:./.opencode/prompts/build.md}",
+      "permission": { "edit": "allow", "bash": "allow" }
+    },
+    "review": {
+      "description": "Critic: adversarial review of a story's diff, report and evidence. Read-only. Different model from the builder.",
+      "mode": "primary",
+      "model": "zai-coding-plan/glm-5.3",
+      "prompt": "{file:./.opencode/prompts/review.md}",
+      "permission": { "edit": "deny", "bash": "allow" }
+    },
+    "plan": {
+      "description": "Planner: turns a goal into a story file using docs/stories/_TEMPLATE.md. Does not write code.",
+      "mode": "primary",
+      "model": "zai-coding-plan/glm-5.3",
+      "prompt": "{file:./.opencode/prompts/plan.md}",
+      "permission": { "edit": "allow", "bash": "ask" }
+    }
+  }
+}
