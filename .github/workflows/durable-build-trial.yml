@@ -27,6 +27,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check trial credentials and repository access
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          Z_AI_API_KEY: ${{ secrets.Z_AI_API_KEY }}
+        run: |
+          test -n "$GH_TOKEN" || { echo 'PAT_TOKEN is missing'; exit 1; }
+          test -n "$Z_AI_API_KEY" || { echo 'Z_AI_API_KEY is missing'; exit 1; }
+          gh api user --silent
+          gh api repos/saiviki/mission-control --jq '.permissions | {pull, push}'
+          gh api repos/saiviki/agent-cost-calc --jq '.permissions | {pull, push}'
+
       - name: Checkout mission-control
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
