@@ -42,7 +42,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: saiviki/mission-control
-          ref: 6d359805838c372aad0bbab79bb5070facaa17e3 # feat/durable-execution, reviewed runtime isolation fix
+          ref: 8eeccd5a7e9eb9bd711d90ac21b7745c914df2ad # feat/durable-execution, compile plus runtime acceptance
           token: ${{ secrets.PAT_TOKEN }}
           path: mission-control
           fetch-depth: 0
@@ -58,7 +58,9 @@ jobs:
 
       - name: Install mission-control dependencies
         working-directory: mission-control
-        run: bun install --frozen-lockfile
+        run: |
+          bun install --frozen-lockfile
+          echo "$GITHUB_WORKSPACE/mission-control/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Verify build service on Linux
         working-directory: mission-control
