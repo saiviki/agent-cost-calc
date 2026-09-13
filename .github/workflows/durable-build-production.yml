@@ -1,0 +1,75 @@
+name: Durable Build Dispatch
+
+on:
+  push:
+    branches: [automation/build-service-trial]
+    paths: [.github/workflows/durable-build-production.yml, automation/build-service-production.json, scripts/publish-build-summary.py]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 1 * * *' # 06:30 IST, before the existing daily brief
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: mc-build-production
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: github.event_name != 'schedule' || vars.BUILD_SERVICE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Checkout reviewed Mission Control revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: saiviki/mission-control
+          ref: 9c71c1a3cd39a5ed5741d86d5f765d9ccd8270de # reviewed production dispatcher
+          token: ${{ secrets.PAT_TOKEN }}
+          path: mission-control
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.5
+      - name: Install pinned runtime and dependencies
+        run: |
+          npm install --global opencode-ai@1.18.30
+          cd mission-control
+          bun install --frozen-lockfile
+          echo "$GITHUB_WORKSPACE/mission-control/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Verify dispatcher
+        working-directory: mission-control
+        run: |
+          bunx tsc -p tsconfig.build-service.json
+          bun test src/build-service src/cli/commands/builds.test.ts ./scripts/hosted-dispatch.test.ts
+          python3 ../scripts/test_publish_build_summary.py
+      - name: Dispatch explicitly approved public work
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          Z_AI_API_KEY: ${{ secrets.Z_AI_API_KEY }}
+          BUILD_SERVICE_ENABLED: ${{ vars.BUILD_SERVICE_ENABLED }}
+        run: bun mission-control/scripts/hosted-dispatch.ts
+      - name: Publish bounded operator receipt
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          BUILD_SERVICE_ENABLED: ${{ vars.BUILD_SERVICE_ENABLED }}
+        run: |
+          gh auth setup-git
+          python3 scripts/publish-build-summary.py
+      - name: Retain operator receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build-dispatch-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            operator-summary.json
+            mission-control/.mission-control/workspaces/**/artifacts/*.log
+          include-hidden-files: true
+          retention-days: 14

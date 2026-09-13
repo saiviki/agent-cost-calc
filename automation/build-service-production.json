@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "owner": "github-hosted",
+  "workspaceRoot": "../mission-control/.mission-control/workspaces",
+  "state": {
+    "type": "git",
+    "databasePath": "../mission-control/.mission-control/production.sqlite",
+    "repoPath": "..",
+    "branch": "mc-build-production-state"
+  },
+  "repositories": [],
+  "maxJobsPerRun": 1,
+  "leaseMs": 180000,
+  "ephemeralHost": true,
+  "publishRequired": true,
+  "allowedModelEnvironment": ["Z_AI_API_KEY"]
+}
