@@ -13,6 +13,7 @@
 #   --prompt-only print only the prompt text (feed it to an Orca task spec), run nothing
 #
 # Refuses to send a story whose data_class is above `internal` to a non-Claude lane.
+# Refuses any run whose lane resolves to no pinned model.
 set -euo pipefail
 export PATH="$HOME/.local/bin:$HOME/.grok/bin:$HOME/bin:$PATH"   # per-user CLI installs; non-login shells miss them
 
@@ -103,6 +104,10 @@ case "$via" in
   claude)
     cmd=(claude -p "$prompt" --permission-mode acceptEdits); m="${model:-${CLAUDE_MODEL:-}}"; [ -n "$m" ] && cmd+=(--model "$m") ;;
 esac
+
+# Model fence: every run is pinned. An unpinned lane silently takes the vendor default,
+# which makes the pin unverifiable after the fact. Refuse before any CLI call.
+[ -n "${m:-}" ] || { echo "REFUSED: story $id lane '$via' resolved to no pinned model. Pass --model, or set the lane default." >&2; exit 3; }
 
 if [ "$dry" = 2 ]; then printf '%s\n' "$prompt"; exit 0; fi
 echo "story=$id lane=$via mode=$mode model=${m:-default} data_class=$data_class log=$log"

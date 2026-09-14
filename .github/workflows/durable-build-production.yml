@@ -3,7 +3,9 @@ name: Durable Build Dispatch
 on:
   push:
     branches: [automation/build-service-trial]
-    paths: [.github/workflows/durable-build-production.yml, automation/build-service-production.json, scripts/publish-build-summary.py]
+    # D4 (2026-09-14): story pushes are the primary trigger; the 06:30 IST cron below stays
+    # as the daily sweep, because GITHUB_TOKEN pushes cannot fire a workflow.
+    paths: ['docs/stories/**.md', .github/workflows/durable-build-production.yml, automation/build-service-production.json, scripts/dispatch.sh, scripts/publish-build-summary.py]
   workflow_dispatch:
   schedule:
     - cron: '0 1 * * *' # 06:30 IST, before the existing daily brief
@@ -49,6 +51,18 @@ jobs:
           bunx tsc -p tsconfig.build-service.json
           bun test src/build-service src/cli/commands/builds.test.ts ./scripts/hosted-dispatch.test.ts
           python3 ../scripts/test_publish_build_summary.py
+      # D3 option A (2026-09-14): a builder run must carry an explicit model. --dry-run reuses
+      # dispatch.sh's own lane fences and returns before any agent CLI call.
+      - name: Require a pinned model for every ready story
+        run: |
+          shopt -s nullglob
+          for f in docs/stories/*.md; do
+            case "$f" in *.report.md|*.review.md|*_TEMPLATE.md) continue ;; esac
+            [ "$(sed -n 's/^status:[[:space:]]*//p' "$f" | head -1 | awk '{print $1}')" = ready ] || continue
+            via="$(sed -n 's/^builder:[[:space:]]*//p' "$f" | head -1 | awk '{print $1}')"
+            bash scripts/dispatch.sh "$f" --via "${via:-glm}" --dry-run >/dev/null \
+              || { echo "BLOCK $f: builder '${via:-glm}' resolves to no pinned model"; exit 1; }
+          done
       - name: Dispatch explicitly approved public work
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
