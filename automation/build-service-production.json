@@ -8,10 +8,27 @@
     "repoPath": "..",
     "branch": "mc-build-production-state"
   },
-  "repositories": [],
+  "repositories": [
+    {
+      "path": "../agent-lab",
+      "remoteIdentity": "https://github.com/saiviki/agent-lab",
+      "ref": "main",
+      "storyIds": [
+        "deferred-schema-benchmark"
+      ],
+      "storyRoots": [
+        "docs/stories"
+      ],
+      "dataClasses": [
+        "public"
+      ]
+    }
+  ],
   "maxJobsPerRun": 1,
   "leaseMs": 180000,
   "ephemeralHost": true,
   "publishRequired": true,
-  "allowedModelEnvironment": ["Z_AI_API_KEY"]
+  "allowedModelEnvironment": [
+    "Z_AI_API_KEY"
+  ]
 }
