@@ -1,31 +1,31 @@
 {
-  "producedAt": "2026-09-15T10:57:29.831Z",
+  "producedAt": "2026-09-15T11:01:21.356Z",
   "imported": [
-    "deferred-schema-benchmark-4cba66b5387d0628280ec61363018be877cb31cb1fb737a995250f0a6fc2e89c"
+    "deferred-schema-benchmark-fe4ccacc8b4d818f9dfb4faaa35b17f60fa355582b41f858011be4de0f2d56cf"
   ],
   "syncErrors": [],
   "jobsRun": 1,
   "jobs": [
     {
-      "id": "deferred-schema-benchmark-4cba66b5387d0628280ec61363018be877cb31cb1fb737a995250f0a6fc2e89c",
-      "phase": "failed",
-      "blocker": "Builder changed out-of-scope file scripts/__pycache__/deferred_schema_benchmark.cpython-312.pyc. Expected one of: scripts/deferred_schema_benchmark.py, docs/evidence/deferred-schema-benchmark.md. Hint: restrict edits to approved paths.",
-      "nextDecision": "inspect_failure_before_new_approval",
-      "pullRequestUrl": null,
-      "pullRequestHead": null,
+      "id": "deferred-schema-benchmark-fe4ccacc8b4d818f9dfb4faaa35b17f60fa355582b41f858011be4de0f2d56cf",
+      "phase": "ready_for_release",
+      "blocker": null,
+      "nextDecision": "review_draft_pr",
+      "pullRequestUrl": "https://github.com/saiviki/agent-lab/pull/2",
+      "pullRequestHead": "f3797796613ef9f4e2fa2a4aa4d4cf7de94c4968",
       "source": {
         "approvalId": "deferred-schema-benchmark",
         "repository": "https://github.com/saiviki/agent-lab",
         "story": "docs/stories/deferred-schema-benchmark.md",
-        "commit": "0761bdf90ed355e815a80bd4bac346b3f4d44f19"
+        "commit": "8f4be0c341afd8308b9d1b28c706d983e531752d"
       },
       "attempt": {
-        "id": "de3193b6-a9a0-486e-8d1e-ad6d73f59686",
-        "number": 2
+        "id": "5d3a7da9-f615-460d-887b-8b81b8bc762c",
+        "number": 1
       },
-      "outcome": "failed"
+      "outcome": "ready_for_release"
     }
   ],
   "cadenceEnabled": true,
-  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/34960449605"
+  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/34960759780"
 }
