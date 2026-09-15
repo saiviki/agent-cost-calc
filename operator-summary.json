@@ -1,31 +1,31 @@
 {
-  "producedAt": "2026-09-15T10:36:17.676Z",
+  "producedAt": "2026-09-15T10:51:34.041Z",
   "imported": [
-    "deferred-schema-benchmark-cb248433bc90686c51e4475f6da53a5c6669f051a9e6d6ed6129bd21d69b85f4"
+    "deferred-schema-benchmark-4cba66b5387d0628280ec61363018be877cb31cb1fb737a995250f0a6fc2e89c"
   ],
   "syncErrors": [],
   "jobsRun": 1,
   "jobs": [
     {
-      "id": "deferred-schema-benchmark-cb248433bc90686c51e4475f6da53a5c6669f051a9e6d6ed6129bd21d69b85f4",
+      "id": "deferred-schema-benchmark-4cba66b5387d0628280ec61363018be877cb31cb1fb737a995250f0a6fc2e89c",
       "phase": "failed",
-      "blocker": "Builder failed with exit code 1. See /home/runner/work/agent-cost-calc/agent-cost-calc/mission-control/.mission-control/workspaces/deferred-schema-benchmark-cb248433bc90686c51e4475f6da53a5c6669f051a9e6d6ed6129bd21d69b85f4-f16ff023-d6d8-478a-9d21-4f24cfb216b2/artifacts/builder.stderr.log.",
-      "nextDecision": "inspect_blocker_and_reapprove_or_cancel",
+      "blocker": null,
+      "nextDecision": null,
       "pullRequestUrl": null,
       "pullRequestHead": null,
       "source": {
         "approvalId": "deferred-schema-benchmark",
         "repository": "https://github.com/saiviki/agent-lab",
         "story": "docs/stories/deferred-schema-benchmark.md",
-        "commit": "0816c405d01a7863a9c5a2ea07b2179d936a8d05"
+        "commit": "0761bdf90ed355e815a80bd4bac346b3f4d44f19"
       },
       "attempt": {
-        "id": "f16ff023-d6d8-478a-9d21-4f24cfb216b2",
-        "number": 2
+        "id": "0519bdab-826d-4e58-9b70-d6b08aba97eb",
+        "number": 1
       },
-      "outcome": "blocked"
+      "outcome": null
     }
   ],
   "cadenceEnabled": true,
-  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/34958648808"
+  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/34960125586"
 }
