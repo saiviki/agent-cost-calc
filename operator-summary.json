@@ -1,9 +1,31 @@
 {
-  "producedAt": "2026-09-15T10:28:03.120Z",
-  "imported": [],
+  "producedAt": "2026-09-15T10:35:04.658Z",
+  "imported": [
+    "deferred-schema-benchmark-cb248433bc90686c51e4475f6da53a5c6669f051a9e6d6ed6129bd21d69b85f4"
+  ],
   "syncErrors": [],
-  "jobsRun": 0,
-  "jobs": [],
-  "cadenceEnabled": false,
-  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/34958008426"
+  "jobsRun": 1,
+  "jobs": [
+    {
+      "id": "deferred-schema-benchmark-cb248433bc90686c51e4475f6da53a5c6669f051a9e6d6ed6129bd21d69b85f4",
+      "phase": "failed",
+      "blocker": null,
+      "nextDecision": null,
+      "pullRequestUrl": null,
+      "pullRequestHead": null,
+      "source": {
+        "approvalId": "deferred-schema-benchmark",
+        "repository": "https://github.com/saiviki/agent-lab",
+        "story": "docs/stories/deferred-schema-benchmark.md",
+        "commit": "0816c405d01a7863a9c5a2ea07b2179d936a8d05"
+      },
+      "attempt": {
+        "id": "23786a8b-0891-4ca5-9b23-3790f1ed70cd",
+        "number": 1
+      },
+      "outcome": null
+    }
+  ],
+  "cadenceEnabled": true,
+  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/34958645856"
 }
