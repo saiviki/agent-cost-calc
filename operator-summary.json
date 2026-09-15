@@ -1,5 +1,5 @@
 {
-  "producedAt": "2026-09-15T10:35:04.658Z",
+  "producedAt": "2026-09-15T10:36:17.676Z",
   "imported": [
     "deferred-schema-benchmark-cb248433bc90686c51e4475f6da53a5c6669f051a9e6d6ed6129bd21d69b85f4"
   ],
@@ -9,8 +9,8 @@
     {
       "id": "deferred-schema-benchmark-cb248433bc90686c51e4475f6da53a5c6669f051a9e6d6ed6129bd21d69b85f4",
       "phase": "failed",
-      "blocker": null,
-      "nextDecision": null,
+      "blocker": "Builder failed with exit code 1. See /home/runner/work/agent-cost-calc/agent-cost-calc/mission-control/.mission-control/workspaces/deferred-schema-benchmark-cb248433bc90686c51e4475f6da53a5c6669f051a9e6d6ed6129bd21d69b85f4-f16ff023-d6d8-478a-9d21-4f24cfb216b2/artifacts/builder.stderr.log.",
+      "nextDecision": "inspect_blocker_and_reapprove_or_cancel",
       "pullRequestUrl": null,
       "pullRequestHead": null,
       "source": {
@@ -20,12 +20,12 @@
         "commit": "0816c405d01a7863a9c5a2ea07b2179d936a8d05"
       },
       "attempt": {
-        "id": "23786a8b-0891-4ca5-9b23-3790f1ed70cd",
-        "number": 1
+        "id": "f16ff023-d6d8-478a-9d21-4f24cfb216b2",
+        "number": 2
       },
-      "outcome": null
+      "outcome": "blocked"
     }
   ],
   "cadenceEnabled": true,
-  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/34958645856"
+  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/34958648808"
 }
