@@ -2,7 +2,7 @@ name: Durable Build Dispatch
 
 on:
   push:
-    branches: [automation/build-service-trial]
+    branches: [main]
     # D4 (2026-09-14): story pushes are the primary trigger; the 06:30 IST cron below stays
     # as the daily sweep, because GITHUB_TOKEN pushes cannot fire a workflow.
     paths: ['docs/stories/**.md', .github/workflows/durable-build-production.yml, automation/build-service-production.json, scripts/dispatch.sh, scripts/publish-build-summary.py]
