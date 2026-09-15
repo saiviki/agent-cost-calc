@@ -1,5 +1,5 @@
 {
-  "producedAt": "2026-09-15T10:51:34.041Z",
+  "producedAt": "2026-09-15T10:57:29.831Z",
   "imported": [
     "deferred-schema-benchmark-4cba66b5387d0628280ec61363018be877cb31cb1fb737a995250f0a6fc2e89c"
   ],
@@ -9,8 +9,8 @@
     {
       "id": "deferred-schema-benchmark-4cba66b5387d0628280ec61363018be877cb31cb1fb737a995250f0a6fc2e89c",
       "phase": "failed",
-      "blocker": null,
-      "nextDecision": null,
+      "blocker": "Builder changed out-of-scope file scripts/__pycache__/deferred_schema_benchmark.cpython-312.pyc. Expected one of: scripts/deferred_schema_benchmark.py, docs/evidence/deferred-schema-benchmark.md. Hint: restrict edits to approved paths.",
+      "nextDecision": "inspect_failure_before_new_approval",
       "pullRequestUrl": null,
       "pullRequestHead": null,
       "source": {
@@ -20,12 +20,12 @@
         "commit": "0761bdf90ed355e815a80bd4bac346b3f4d44f19"
       },
       "attempt": {
-        "id": "0519bdab-826d-4e58-9b70-d6b08aba97eb",
-        "number": 1
+        "id": "de3193b6-a9a0-486e-8d1e-ad6d73f59686",
+        "number": 2
       },
-      "outcome": null
+      "outcome": "failed"
     }
   ],
   "cadenceEnabled": true,
-  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/34960125586"
+  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/34960449605"
 }
