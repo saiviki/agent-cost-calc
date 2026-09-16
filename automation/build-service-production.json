@@ -14,7 +14,9 @@
       "remoteIdentity": "https://github.com/saiviki/agent-lab",
       "ref": "main",
       "storyIds": [
-        "deferred-schema-benchmark"
+        "deferred-schema-benchmark",
+        "gqa-kv-cache-size-calculator",
+        "rust-cache-memory-microbench"
       ],
       "storyRoots": [
         "docs/stories"
