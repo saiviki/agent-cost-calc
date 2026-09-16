@@ -1,9 +1,9 @@
 {
-  "producedAt": "2026-09-16T12:57:58.326Z",
+  "producedAt": "2026-09-16T13:05:19.024Z",
   "imported": [
     "deferred-schema-benchmark-fe4ccacc8b4d818f9dfb4faaa35b17f60fa355582b41f858011be4de0f2d56cf",
     "gqa-kv-cache-size-calculator-ade6716c0b9ead4adb275fe544a94d3a52e7c94fc8e7c7c3a46087412d0893d2",
-    "rust-cache-memory-microbench-ad55f4c5519d2029b75fbbd459b4dc6b9eba8fad398224da027cccdbd03dd718",
+    "rust-cache-memory-microbench-30b088504fdfca9e943114e095fb71f4fda1a6a7dab70be7aeb08c44860a20f1",
     "math-answer-verifier-rlvr-527b2434642d6884b82e0acb7da1689e5494e2027cbdd1d09744ca48570a867b"
   ],
   "syncErrors": [],
@@ -48,23 +48,23 @@
       "outcome": "ready_for_release"
     },
     {
-      "id": "rust-cache-memory-microbench-ad55f4c5519d2029b75fbbd459b4dc6b9eba8fad398224da027cccdbd03dd718",
-      "phase": "failed",
-      "blocker": "Builder changed out-of-scope file rust-cache-microbench/Cargo.lock. Expected one of: rust-cache-microbench/Cargo.toml, rust-cache-microbench/src/lib.rs, docs/evidence/rust-cache-memory-microbench.md. Hint: restrict edits to approved paths.",
-      "nextDecision": "inspect_failure_before_new_approval",
-      "pullRequestUrl": null,
-      "pullRequestHead": null,
+      "id": "rust-cache-memory-microbench-30b088504fdfca9e943114e095fb71f4fda1a6a7dab70be7aeb08c44860a20f1",
+      "phase": "ready_for_release",
+      "blocker": null,
+      "nextDecision": "review_draft_pr",
+      "pullRequestUrl": "https://github.com/saiviki/agent-lab/pull/5",
+      "pullRequestHead": "87da96c39bd8c49f4a9ae540ac391554248a2c64",
       "source": {
         "approvalId": "rust-cache-memory-microbench",
         "repository": "https://github.com/saiviki/agent-lab",
         "story": "docs/stories/rust-cache-memory-microbench.md",
-        "commit": "aadab913b13cf18edf97055026ca91b78871a9e2"
+        "commit": "4045d8c5440d065355fa00fba54f8c701f704a0b"
       },
       "attempt": {
-        "id": "e950ee5a-b318-4d5f-9778-69f8381ae9c2",
+        "id": "3b833fb8-e784-4d6d-94ed-8d55154a7249",
         "number": 1
       },
-      "outcome": "failed"
+      "outcome": "ready_for_release"
     },
     {
       "id": "math-answer-verifier-rlvr-527b2434642d6884b82e0acb7da1689e5494e2027cbdd1d09744ca48570a867b",
@@ -87,5 +87,5 @@
     }
   ],
   "cadenceEnabled": true,
-  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35098494993"
+  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35099066932"
 }
