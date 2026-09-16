@@ -1,10 +1,12 @@
 {
-  "producedAt": "2026-09-16T12:19:54.243Z",
+  "producedAt": "2026-09-16T12:26:16.160Z",
   "imported": [
-    "deferred-schema-benchmark-fe4ccacc8b4d818f9dfb4faaa35b17f60fa355582b41f858011be4de0f2d56cf"
+    "deferred-schema-benchmark-fe4ccacc8b4d818f9dfb4faaa35b17f60fa355582b41f858011be4de0f2d56cf",
+    "gqa-kv-cache-size-calculator-e4c5401c1fa7e9e41cd52a4a731609d58d4cf4aad77238ad01f8b7c265f13dd8",
+    "rust-cache-memory-microbench-3e1b0da6d355a4e396d4b2b23d9f2f8fc55b6122fbf47b0002c04aad4e469b46"
   ],
   "syncErrors": [],
-  "jobsRun": 0,
+  "jobsRun": 1,
   "jobs": [
     {
       "id": "deferred-schema-benchmark-fe4ccacc8b4d818f9dfb4faaa35b17f60fa355582b41f858011be4de0f2d56cf",
@@ -24,8 +26,43 @@
         "number": 1
       },
       "outcome": "ready_for_release"
+    },
+    {
+      "id": "gqa-kv-cache-size-calculator-e4c5401c1fa7e9e41cd52a4a731609d58d4cf4aad77238ad01f8b7c265f13dd8",
+      "phase": "failed",
+      "blocker": null,
+      "nextDecision": null,
+      "pullRequestUrl": null,
+      "pullRequestHead": null,
+      "source": {
+        "approvalId": "gqa-kv-cache-size-calculator",
+        "repository": "https://github.com/saiviki/agent-lab",
+        "story": "docs/stories/gqa-kv-cache-size-calculator.md",
+        "commit": "76bfaaf2e0826076fb387ec320026dd924cd961c"
+      },
+      "attempt": {
+        "id": "b3e1cfbf-e450-4def-aae4-5e507aaebb72",
+        "number": 1
+      },
+      "outcome": null
+    },
+    {
+      "id": "rust-cache-memory-microbench-3e1b0da6d355a4e396d4b2b23d9f2f8fc55b6122fbf47b0002c04aad4e469b46",
+      "phase": "queued",
+      "blocker": null,
+      "nextDecision": null,
+      "pullRequestUrl": null,
+      "pullRequestHead": null,
+      "source": {
+        "approvalId": "rust-cache-memory-microbench",
+        "repository": "https://github.com/saiviki/agent-lab",
+        "story": "docs/stories/rust-cache-memory-microbench.md",
+        "commit": "76bfaaf2e0826076fb387ec320026dd924cd961c"
+      },
+      "attempt": null,
+      "outcome": null
     }
   ],
   "cadenceEnabled": true,
-  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35095136886"
+  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35095533904"
 }
