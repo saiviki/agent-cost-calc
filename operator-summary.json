@@ -1,9 +1,10 @@
 {
-  "producedAt": "2026-09-16T12:35:44.834Z",
+  "producedAt": "2026-09-16T12:51:12.603Z",
   "imported": [
     "deferred-schema-benchmark-fe4ccacc8b4d818f9dfb4faaa35b17f60fa355582b41f858011be4de0f2d56cf",
     "gqa-kv-cache-size-calculator-ade6716c0b9ead4adb275fe544a94d3a52e7c94fc8e7c7c3a46087412d0893d2",
-    "rust-cache-memory-microbench-ad55f4c5519d2029b75fbbd459b4dc6b9eba8fad398224da027cccdbd03dd718"
+    "rust-cache-memory-microbench-ad55f4c5519d2029b75fbbd459b4dc6b9eba8fad398224da027cccdbd03dd718",
+    "math-answer-verifier-rlvr-527b2434642d6884b82e0acb7da1689e5494e2027cbdd1d09744ca48570a867b"
   ],
   "syncErrors": [],
   "jobsRun": 1,
@@ -48,9 +49,9 @@
     },
     {
       "id": "rust-cache-memory-microbench-ad55f4c5519d2029b75fbbd459b4dc6b9eba8fad398224da027cccdbd03dd718",
-      "phase": "queued",
-      "blocker": null,
-      "nextDecision": null,
+      "phase": "failed",
+      "blocker": "Builder changed out-of-scope file rust-cache-microbench/Cargo.lock. Expected one of: rust-cache-microbench/Cargo.toml, rust-cache-microbench/src/lib.rs, docs/evidence/rust-cache-memory-microbench.md. Hint: restrict edits to approved paths.",
+      "nextDecision": "inspect_failure_before_new_approval",
       "pullRequestUrl": null,
       "pullRequestHead": null,
       "source": {
@@ -59,10 +60,29 @@
         "story": "docs/stories/rust-cache-memory-microbench.md",
         "commit": "aadab913b13cf18edf97055026ca91b78871a9e2"
       },
+      "attempt": {
+        "id": "e950ee5a-b318-4d5f-9778-69f8381ae9c2",
+        "number": 1
+      },
+      "outcome": "failed"
+    },
+    {
+      "id": "math-answer-verifier-rlvr-527b2434642d6884b82e0acb7da1689e5494e2027cbdd1d09744ca48570a867b",
+      "phase": "queued",
+      "blocker": null,
+      "nextDecision": null,
+      "pullRequestUrl": null,
+      "pullRequestHead": null,
+      "source": {
+        "approvalId": "math-answer-verifier-rlvr",
+        "repository": "https://github.com/saiviki/agent-lab",
+        "story": "docs/stories/math-answer-verifier-rlvr.md",
+        "commit": "78a5d5c9f62a5fe49c31ca1f0f3a95f7f1bed44d"
+      },
       "attempt": null,
       "outcome": null
     }
   ],
   "cadenceEnabled": true,
-  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35096426660"
+  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35097890432"
 }
