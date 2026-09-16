@@ -16,7 +16,8 @@
       "storyIds": [
         "deferred-schema-benchmark",
         "gqa-kv-cache-size-calculator",
-        "rust-cache-memory-microbench"
+        "rust-cache-memory-microbench",
+        "math-answer-verifier-rlvr"
       ],
       "storyRoots": [
         "docs/stories"
