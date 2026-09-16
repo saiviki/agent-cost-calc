@@ -1,9 +1,9 @@
 {
-  "producedAt": "2026-09-16T12:26:16.160Z",
+  "producedAt": "2026-09-16T12:35:44.834Z",
   "imported": [
     "deferred-schema-benchmark-fe4ccacc8b4d818f9dfb4faaa35b17f60fa355582b41f858011be4de0f2d56cf",
-    "gqa-kv-cache-size-calculator-e4c5401c1fa7e9e41cd52a4a731609d58d4cf4aad77238ad01f8b7c265f13dd8",
-    "rust-cache-memory-microbench-3e1b0da6d355a4e396d4b2b23d9f2f8fc55b6122fbf47b0002c04aad4e469b46"
+    "gqa-kv-cache-size-calculator-ade6716c0b9ead4adb275fe544a94d3a52e7c94fc8e7c7c3a46087412d0893d2",
+    "rust-cache-memory-microbench-ad55f4c5519d2029b75fbbd459b4dc6b9eba8fad398224da027cccdbd03dd718"
   ],
   "syncErrors": [],
   "jobsRun": 1,
@@ -28,26 +28,26 @@
       "outcome": "ready_for_release"
     },
     {
-      "id": "gqa-kv-cache-size-calculator-e4c5401c1fa7e9e41cd52a4a731609d58d4cf4aad77238ad01f8b7c265f13dd8",
-      "phase": "failed",
+      "id": "gqa-kv-cache-size-calculator-ade6716c0b9ead4adb275fe544a94d3a52e7c94fc8e7c7c3a46087412d0893d2",
+      "phase": "ready_for_release",
       "blocker": null,
-      "nextDecision": null,
-      "pullRequestUrl": null,
-      "pullRequestHead": null,
+      "nextDecision": "review_draft_pr",
+      "pullRequestUrl": "https://github.com/saiviki/agent-lab/pull/3",
+      "pullRequestHead": "2615c6553a2328cc2ed02e9c8b6c67f747e9fd99",
       "source": {
         "approvalId": "gqa-kv-cache-size-calculator",
         "repository": "https://github.com/saiviki/agent-lab",
         "story": "docs/stories/gqa-kv-cache-size-calculator.md",
-        "commit": "76bfaaf2e0826076fb387ec320026dd924cd961c"
+        "commit": "aadab913b13cf18edf97055026ca91b78871a9e2"
       },
       "attempt": {
-        "id": "b3e1cfbf-e450-4def-aae4-5e507aaebb72",
+        "id": "6365c670-1f9d-487b-942b-2aa8e2da84a4",
         "number": 1
       },
-      "outcome": null
+      "outcome": "ready_for_release"
     },
     {
-      "id": "rust-cache-memory-microbench-3e1b0da6d355a4e396d4b2b23d9f2f8fc55b6122fbf47b0002c04aad4e469b46",
+      "id": "rust-cache-memory-microbench-ad55f4c5519d2029b75fbbd459b4dc6b9eba8fad398224da027cccdbd03dd718",
       "phase": "queued",
       "blocker": null,
       "nextDecision": null,
@@ -57,12 +57,12 @@
         "approvalId": "rust-cache-memory-microbench",
         "repository": "https://github.com/saiviki/agent-lab",
         "story": "docs/stories/rust-cache-memory-microbench.md",
-        "commit": "76bfaaf2e0826076fb387ec320026dd924cd961c"
+        "commit": "aadab913b13cf18edf97055026ca91b78871a9e2"
       },
       "attempt": null,
       "outcome": null
     }
   ],
   "cadenceEnabled": true,
-  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35095533904"
+  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35096426660"
 }
