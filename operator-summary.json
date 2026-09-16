@@ -1,5 +1,5 @@
 {
-  "producedAt": "2026-09-16T05:28:02.108Z",
+  "producedAt": "2026-09-16T12:19:54.243Z",
   "imported": [
     "deferred-schema-benchmark-fe4ccacc8b4d818f9dfb4faaa35b17f60fa355582b41f858011be4de0f2d56cf"
   ],
@@ -27,5 +27,5 @@
     }
   ],
   "cadenceEnabled": true,
-  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35059560840"
+  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35095136886"
 }
