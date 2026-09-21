@@ -1,5 +1,5 @@
 {
-  "producedAt": "2026-09-20T05:32:24.955Z",
+  "producedAt": "2026-09-21T05:38:46.415Z",
   "imported": [
     "deferred-schema-benchmark-fe4ccacc8b4d818f9dfb4faaa35b17f60fa355582b41f858011be4de0f2d56cf",
     "gqa-kv-cache-size-calculator-ade6716c0b9ead4adb275fe544a94d3a52e7c94fc8e7c7c3a46087412d0893d2",
@@ -87,5 +87,5 @@
     }
   ],
   "cadenceEnabled": true,
-  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35491899556"
+  "runUrl": "https://github.com/saiviki/agent-cost-calc/actions/runs/35565252927"
 }
